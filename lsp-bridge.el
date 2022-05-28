@@ -1034,8 +1034,8 @@ If optional MARKER, return a marker instead"
        (when (featurep 'lsp-bridge-icon)
          (add-to-list 'company-box-icons-functions #'lsp-bridge-company-box-icons)))
       (corfu
-       (setq-local corfu-auto-prefix 0)
-       (setq-local corfu-auto nil)
+       ;; (setq-local corfu-auto-prefix 0)
+       ;; (setq-local corfu-auto nil)
 
        (remove-hook 'post-command-hook #'corfu--auto-post-command 'local)
 
