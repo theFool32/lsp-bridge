@@ -105,17 +105,10 @@ Setting this to nil or 0 will turn off the indicator."
   :type 'number
   :group 'lsp-bridge)
 
-(defcustom lsp-bridge-completion-provider
-  (if (boundp 'company-mode)
-      'company
-    'corfu)
-  "The completion provider to use. Can be `company' or `corfu'."
-  :type '(choice (const :tag "company" company)
-                 (const :tag "corfu" corfu)))
-
-(defcustom lsp-bridge-completion-stop-commands '("corfu-complete" "corfu-insert"
-                                                 "undo-tree-undo" "undo-tree-redo"
-                                                 "kill-region" "delete-block-backward")
+(defcustom lsp-bridge-completion-stop-commands
+  '("corfu-complete" "corfu-insert"
+    "undo-tree-undo" "undo-tree-redo"
+    "kill-region" "delete-block-backward" "company-complete-selection")
   "If last command is match this option, stop popup completion ui."
   :type 'cons
   :group 'lsp-bridge)
@@ -161,6 +154,11 @@ to avoid completion ui filter candidates."
 
 (defcustom lsp-bridge-enable-auto-import nil
   "Whether to enable auto-import."
+  :type 'boolean
+  :group 'lsp-bridge)
+
+(defcustom lsp-bridge-disable-backup t
+  "Default disable backup feature, include `make-backup-files' `auto-save-default' and `create-lockfiles'."
   :type 'boolean
   :group 'lsp-bridge)
 
@@ -269,7 +267,8 @@ Then LSP-Bridge will start by gdb, please send new issue with `*lsp-bridge*' buf
     (dart-mode . "dart-analysis-server")
     (scala-mode . "metals")
     ((js2-mode js-mode rjsx-mode) . "javascript")
-    ((typescript-mode typescript-tsx-mode) . "typescript")
+    (typescript-tsx-mode . "typescriptreact")
+    ((typescript-mode) . "typescript")
     (tuareg-mode . "ocamllsp")
     (erlang-mode . "erlang-ls")
     ((latex-mode Tex-latex-mode texmode context-mode texinfo-mode bibtex-mode) . "texlab")
@@ -488,9 +487,11 @@ Auto completion is only performed if the tick did not change."
 (defvar-local lsp-bridge-completion-trigger-characters nil)
 (defvar-local lsp-bridge-completion-prefix nil)
 (defvar-local lsp-bridge-completion-common nil)
+(defvar-local lsp-bridge-completion-position nil)
 (defvar-local lsp-bridge-filepath "")
 (defvar-local lsp-bridge-prohibit-completion nil)
-(defvar-local lsp-bridge--current-tick nil)
+(defvar-local lsp-bridge-current-tick nil)
+(defvar-local lsp-bridge-diagnostic-overlays '())
 
 (defun lsp-bridge-char-before ()
   (let ((prev-char (char-before)))
@@ -504,9 +505,14 @@ Auto completion is only performed if the tick did not change."
 
   ;; Hide hover tooltip.
   (if (not (string-prefix-p "lsp-bridge-popup-documentation-scroll" (format "%s" this-command)))
-      (lsp-bridge-hide-doc-tooltip)))
+      (lsp-bridge-hide-doc-tooltip))
 
-(defun lsp-bridge-monitor-kill-buffer ()
+  ;; Hide diagnostic tooltip.
+  (unless (member (format "%s" this-command) '("lsp-bridge-jump-to-next-diagnostic"
+                                               "lsp-bridge-jump-to-prev-diagnostic"))
+    (lsp-bridge-hide-diagnostic-tooltip)))
+
+(defun lsp-bridge-close-buffer-file ()
   (when (lsp-bridge-epc-live-p lsp-bridge-epc-process)
     (lsp-bridge-call-async "close_file" lsp-bridge-filepath)))
 
@@ -515,11 +521,11 @@ Auto completion is only performed if the tick did not change."
            (string-empty-p (format "%s" (car list))))
       (and (eq (length list) 0))))
 
-(defun lsp-bridge-record-completion-items (filepath common items server-name completion-trigger-characters)
-  (lsp-bridge--with-file-buffer
-      filepath
+(defun lsp-bridge-record-completion-items (filepath common items position server-name completion-trigger-characters)
+  (lsp-bridge--with-file-buffer filepath
     ;; Save completion items.
     (setq-local lsp-bridge-completion-common common)
+    (setq-local lsp-bridge-completion-position position)
     (setq-local lsp-bridge-completion-server-name server-name)
     (setq-local lsp-bridge-completion-trigger-characters completion-trigger-characters)
 
@@ -539,36 +545,33 @@ Auto completion is only performed if the tick did not change."
       (when (cl-every (lambda (pred)
                         (if (functionp pred) (funcall pred) t))
                       lsp-bridge-enable-popup-predicates)
-        (cl-case lsp-bridge-completion-provider
-          (company (company-manual-begin))
-          (corfu
-           (pcase (while-no-input ;; Interruptible capf query
-                    (run-hook-wrapped 'completion-at-point-functions #'corfu--capf-wrapper))
-             (`(,fun ,beg ,end ,table . ,plist)
-              (let ((completion-in-region-mode-predicate
-                     (lambda () (eq beg (car-safe (funcall fun)))))
-                    (completion-extra-properties plist))
-                (setq completion-in-region--data
-                      (list (if (markerp beg) beg (copy-marker beg))
-                            (copy-marker end t)
-                            table
-                            (plist-get plist :predicate)))
+        (pcase (while-no-input ;; Interruptible capf query
+                 (run-hook-wrapped 'completion-at-point-functions #'corfu--capf-wrapper))
+          (`(,fun ,beg ,end ,table . ,plist)
+           (let ((completion-in-region-mode-predicate
+                  (lambda () (eq beg (car-safe (funcall fun)))))
+                 (completion-extra-properties plist))
+             (setq completion-in-region--data
+                   (list (if (markerp beg) beg (copy-marker beg))
+                         (copy-marker end t)
+                         table
+                         (plist-get plist :predicate)))
 
-                ;; Refresh candidates forcibly!!!
-                (pcase-let* ((`(,beg ,end ,table ,pred) completion-in-region--data)
-                             (pt (- (point) beg))
-                             (str (buffer-substring-no-properties beg end)))
-                  (corfu--update-candidates str pt table (plist-get plist :predicate)))
+             ;; Refresh candidates forcibly!!!
+             (pcase-let* ((`(,beg ,end ,table ,pred) completion-in-region--data)
+                          (pt (- (point) beg))
+                          (str (buffer-substring-no-properties beg end)))
+               (corfu--update-candidates str pt table (plist-get plist :predicate)))
 
-                ;; Setup hook.
-                (corfu--setup)
+             ;; Setup hook.
+             (corfu--setup)
 
-                ;; When you finger faster than LSP server,
-                ;; Corfu will **auto insert** select candidate when lsp-bridge push newest completion data,
-                ;; so we need set `corfu-on-exact-match' to quit to prohibit corfu insert select candidate.
-                (let ((corfu-on-exact-match 'quit))
-                  (corfu--update)))))
-           ))))))
+             ;; When you finger faster than LSP server,
+             ;; Corfu will **auto insert** select candidate when lsp-bridge push newest completion data,
+             ;; so we need set `corfu-on-exact-match' to quit to prohibit corfu insert select candidate.
+             (let ((corfu-on-exact-match 'quit))
+               (corfu--update)))))
+        ))))
 
 (defun lsp-bridge-not-empty-candidates ()
   "Hide completion if candidates list is empty."
@@ -576,7 +579,7 @@ Auto completion is only performed if the tick did not change."
 
 (defun lsp-bridge-not-match-completion-position ()
   "Hide completion if the position of cursor has changed."
-  (equal lsp-bridge--current-tick (lsp-bridge--auto-tick)))
+  (equal lsp-bridge-current-tick (lsp-bridge--auto-tick)))
 
 (defun lsp-bridge-not-match-stop-commands ()
   "Hide completion if `lsp-bridge-last-change-command' match commands in `lsp-bridge-completion-stop-commands'."
@@ -654,10 +657,14 @@ Auto completion is only performed if the tick did not change."
                                              nil))
                       (kind (plist-get candidate-info :kind))
                       (snippet-fn (and (or (eql insert-text-format 2) (string= kind "Snippet")) (lsp-bridge--snippet-expansion-fn)))
+                      (completion-start-pos (lsp-bridge--lsp-position-to-point lsp-bridge-completion-position))
                       (delete-start-pos (if text-edit
                                             (lsp-bridge--lsp-position-to-point (plist-get (plist-get text-edit :range) :start))
                                           bounds-start))
-                      (delete-end-pos (point))
+                      (range-end-pos (if text-edit
+                                         (lsp-bridge--lsp-position-to-point (plist-get (plist-get text-edit :range) :end))
+                                       completion-start-pos))
+                      (delete-end-pos (+ (point) (- range-end-pos completion-start-pos)))
                       (insert-candidate (or new-text insert-text label)))
 
                  ;; Insert candidate or expand snippet.
@@ -696,8 +703,8 @@ Doubles as an indicator of snippet support."
                     (newText (plist-get edit :newText)))
                (cons newText
                      (cons
-                      (lsp-bridge--lsp-position-to-point (plist-get range :start) markers)
-                      (lsp-bridge--lsp-position-to-point (plist-get range :end) markers)
+                      (lsp-bridge--lsp-position-to-point (plist-get range :start) 'markers)
+                      (lsp-bridge--lsp-position-to-point (plist-get range :end) 'markers)
                       ))))
            (reverse edits)))
     (undo-amalgamate-change-group change-group)))
@@ -757,10 +764,8 @@ If optional MARKER, return a marker instead"
 
   ;; Send change_file request.
   (when (lsp-bridge-epc-live-p lsp-bridge-epc-process)
-    (let ((completion-frame (cl-case lsp-bridge-completion-provider
-                              (company (company-box--get-frame))
-                              (corfu corfu--frame))))
-      (setq-local lsp-bridge--current-tick (lsp-bridge--auto-tick))
+    (let ((completion-frame corfu--frame))
+      (setq-local lsp-bridge-current-tick (lsp-bridge--auto-tick))
       (lsp-bridge-call-async "change_file"
                              lsp-bridge-filepath
                              lsp-bridge--before-change-begin-pos
@@ -923,35 +928,38 @@ If optional MARKER, return a marker instead"
   (posframe-funcall lsp-bridge-lookup-doc-tooltip
                     #'scroll-down-command arg))
 
+(defun lsp-bridge-frame-background-color ()
+  (let* ((theme-mode (format "%s" (frame-parameter nil 'background-mode))))
+    (if (string-equal theme-mode "dark") "#191a1b" "#f0f0f0")))
+
 (defun lsp-bridge-popup-documentation (kind name value)
-  (let* ((theme-mode (format "%s" (frame-parameter nil 'background-mode)))
-         (background-color (if (string-equal theme-mode "dark")
-                               "#191a1b"
-                             "#f0f0f0")))
-    (with-current-buffer (get-buffer-create lsp-bridge-lookup-doc-tooltip)
-      (erase-buffer)
-      (text-scale-set lsp-bridge-lookup-doc-tooltip-text-scale)
-      (insert (propertize name 'face 'font-lock-function-name-face))
-      (insert "\n\n")
-      (setq-local markdown-fontify-code-blocks-natively t)
-      (insert value)
-      (if (fboundp 'gfm-view-mode)
-          (let ((view-inhibit-help-message t))
-            (gfm-view-mode))
-        (gfm-mode))
-      ;; avoid 'gfm-view-mode made buffer read only.
-      (read-only-mode 0)
-      (font-lock-ensure))
-    (when (posframe-workable-p)
-      (posframe-show lsp-bridge-lookup-doc-tooltip
-                     :position (point)
-                     :internal-border-width lsp-bridge-lookup-doc-tooltip-border-width
-                     :background-color background-color
-                     :max-width lsp-bridge-lookup-doc-tooltip-max-width
-                     :max-height lsp-bridge-lookup-doc-tooltip-max-height))))
+  (with-current-buffer (get-buffer-create lsp-bridge-lookup-doc-tooltip)
+    (erase-buffer)
+    (text-scale-set lsp-bridge-lookup-doc-tooltip-text-scale)
+    (insert (propertize name 'face 'font-lock-function-name-face))
+    (insert "\n\n")
+    (setq-local markdown-fontify-code-blocks-natively t)
+    (insert value)
+    (if (fboundp 'gfm-view-mode)
+        (let ((view-inhibit-help-message t))
+          (gfm-view-mode))
+      (gfm-mode))
+    ;; avoid 'gfm-view-mode made buffer read only.
+    (read-only-mode 0)
+    (font-lock-ensure))
+  (when (posframe-workable-p)
+    (posframe-show lsp-bridge-lookup-doc-tooltip
+                   :position (point)
+                   :internal-border-width lsp-bridge-lookup-doc-tooltip-border-width
+                   :background-color (lsp-bridge-frame-background-color)
+                   :max-width lsp-bridge-lookup-doc-tooltip-max-width
+                   :max-height lsp-bridge-lookup-doc-tooltip-max-height)))
 
 (defun lsp-bridge-hide-doc-tooltip ()
   (posframe-hide lsp-bridge-lookup-doc-tooltip))
+
+(defun lsp-bridge-hide-diagnostic-tooltip ()
+  (posframe-hide lsp-bridge-diagnostic-tooltip))
 
 (defun lsp-bridge-show-signature-help (help)
   (cond
@@ -973,7 +981,8 @@ If optional MARKER, return a marker instead"
   ;; Hide completion frame when buffer or window changed.
   (unless (eq (current-buffer)
               lsp-bridge--last-buffer)
-    (lsp-bridge-hide-doc-tooltip))
+    (lsp-bridge-hide-doc-tooltip)
+    (lsp-bridge-hide-diagnostic-tooltip))
 
   (unless (or (minibufferp)
               (string-equal (buffer-name) "*Messages*"))
@@ -986,8 +995,10 @@ If optional MARKER, return a marker instead"
     (after-change-functions . lsp-bridge-monitor-after-change)
     (post-command-hook . lsp-bridge-monitor-post-command)
     (after-save-hook . lsp-bridge-monitor-after-save)
-    (kill-buffer-hook . lsp-bridge-monitor-kill-buffer)
-    (completion-at-point-functions . lsp-bridge-capf)))
+    (kill-buffer-hook . lsp-bridge-close-buffer-file)
+    (completion-at-point-functions . lsp-bridge-capf)
+    (before-revert-hook . lsp-bridge-close-buffer-file)
+    ))
 
 (defvar lsp-bridge-mode-map (make-sparse-keymap))
 
@@ -995,6 +1006,43 @@ If optional MARKER, return a marker instead"
   "A list of org babel languages in which source code block lsp-bridge will be enabled."
   :type 'list
   :group 'lsp-bridge)
+
+(defcustom lsp-bridge-diagnostics-fetch-idle 1
+  "The idle seconds to fetch diagnostics."
+  :type 'integer
+  :group 'lsp-bridge)
+
+(defface lsp-bridge-diagnostics-error-face
+  '((t (:underline (:style wave :color "Red1"))))
+  "Face error diagnostic."
+  :group 'lsp-bridge)
+
+(defface lsp-bridge-diagnostics-warning-face
+  '((t (:underline (:style wave :color "DarkOrange"))))
+  "Face warning diagnostic."
+  :group 'lsp-bridge)
+
+(defface lsp-bridge-diagnostics-info-face
+  '((t (:underline (:style wave :color "ForestGreen"))))
+  "Face info diagnostic."
+  :group 'lsp-bridge)
+
+(defface lsp-bridge-diagnostics-hint-face
+  '((t (:underline (:style wave :color "grey"))))
+  "Face hint diagnostic."
+  :group 'lsp-bridge)
+
+(defcustom lsp-bridge-diagnostic-tooltip " *lsp-bridge-diagnostic*"
+  "Buffer for display diagnostic information."
+  :type 'string
+  :group 'lsp-bridge)
+
+(defcustom lsp-bridge-diagnostic-tooltip-border-width 20
+  "The border width of lsp-bridge diagnostic tooltip, in pixels."
+  :type 'integer
+  :group 'lsp-bridge)
+
+(defvar lsp-bridge-diagnostics-timer nil)
 
 ;;;###autoload
 (define-minor-mode lsp-bridge-mode
@@ -1012,6 +1060,13 @@ If optional MARKER, return a marker instead"
     (message "[LSP-Bridge] cannot be enabled in non-file buffers.")
     (setq lsp-bridge-mode nil))
    (t
+    ;; Disable backup file.
+    ;; Please use my another plugin `https://github.com/manateelazycat/auto-save' and use git for file version management.
+    (when lsp-bridge-disable-backup
+      (setq make-backup-files nil)
+      (setq auto-save-default nil)
+      (setq create-lockfiles nil))
+
     ;; When user open buffer by `ido-find-file', lsp-bridge will throw `FileNotFoundError' error.
     ;; So we need save buffer to disk before enable `lsp-bridge-mode'.
     (unless (file-exists-p (buffer-file-name))
@@ -1023,30 +1078,16 @@ If optional MARKER, return a marker instead"
     (setq lsp-bridge-filepath (file-truename buffer-file-name))
     (setq lsp-bridge-last-position 0)
 
-    (cl-case lsp-bridge-completion-provider
-      (company
-       (setq-local company-minimum-prefix-length 0)
-       (setq-local company-idle-delay nil)
-       (setq-local company-require-match nil) ; need disable `company-require-match', you even can't input `.' sometimes
+    (remove-hook 'post-command-hook #'corfu--auto-post-command 'local)
 
-       (advice-add #'company-box-hide :after #'lsp-bridge--completion-hide-advisor)
+    (advice-add #'corfu--popup-hide :after #'lsp-bridge--completion-hide-advisor)
 
-       (when (featurep 'lsp-bridge-icon)
-         (add-to-list 'company-box-icons-functions #'lsp-bridge-company-box-icons)))
-      (corfu
-       ;; (setq-local corfu-auto-prefix 0)
-       ;; (setq-local corfu-auto nil)
+    (when (featurep 'lsp-bridge-icon)
+      (add-to-list 'corfu-margin-formatters #'lsp-bridge-icon-margin-formatter))
 
-       (remove-hook 'post-command-hook #'corfu--auto-post-command 'local)
-
-       (advice-add #'corfu--popup-hide :after #'lsp-bridge--completion-hide-advisor)
-
-       (when (featurep 'lsp-bridge-icon)
-         (add-to-list 'corfu-margin-formatters #'lsp-bridge-icon-margin-formatter))
-
-       ;; Add fuzzy match.
-       (when (functionp 'lsp-bridge-orderless-setup)
-         (lsp-bridge-orderless-setup))))
+    ;; Add fuzzy match.
+    (when (functionp 'lsp-bridge-orderless-setup)
+      (lsp-bridge-orderless-setup))
 
     ;; Flag `lsp-bridge-is-starting' make sure only call `lsp-bridge-start-process' once.
     (unless lsp-bridge-is-starting
@@ -1054,20 +1095,12 @@ If optional MARKER, return a marker instead"
 
 (defun lsp-bridge--disable ()
   "Disable LSP Bridge mode."
-  (cl-case lsp-bridge-completion-provider
-    (company
-     (kill-local-variable 'company-minimum-prefix-length)
-     (kill-local-variable 'company-idle-delay)
-     (kill-local-variable 'company-require-match)
+  (kill-local-variable 'corfu-auto-prefix)
+  (kill-local-variable 'corfu-auto)
 
-     (advice-remove #'company-box-hide #'lsp-bridge--completion-hide-advisor))
-    (corfu
-     (kill-local-variable 'corfu-auto-prefix)
-     (kill-local-variable 'corfu-auto)
+  (and corfu-auto (add-hook 'post-command-hook #'corfu--auto-post-command nil 'local))
 
-     (and corfu-auto (add-hook 'post-command-hook #'corfu--auto-post-command nil 'local))
-
-     (advice-remove #'corfu--popup-hide #'lsp-bridge--completion-hide-advisor)))
+  (advice-remove #'corfu--popup-hide #'lsp-bridge--completion-hide-advisor)
 
   (dolist (hook lsp-bridge--internal-hooks)
     (remove-hook (car hook) (cdr hook) t)))
@@ -1076,24 +1109,94 @@ If optional MARKER, return a marker instead"
   (lsp-bridge--with-file-buffer filepath
     (lsp-bridge--disable)))
 
+(defun lsp-bridge-diagnostics-fetch ()
+  (when (and lsp-bridge-mode
+             (process-live-p lsp-bridge-server)
+             (buffer-file-name))
+    (when (string-equal (file-truename (buffer-file-name)) lsp-bridge-filepath)
+      (lsp-bridge-call-async "pull_diagnostics" lsp-bridge-filepath))))
+
+(defun lsp-bridge-diagnostics-render (filepath diagnostics)
+  (lsp-bridge--with-file-buffer filepath
+    (when lsp-bridge-diagnostic-overlays
+      (dolist (diagnostic-overlay lsp-bridge-diagnostic-overlays)
+        (delete-overlay diagnostic-overlay)))
+
+    (setq lsp-bridge-diagnostic-overlays nil)
+
+    (dolist (diagnostic diagnostics)
+      (let* ((diagnostic-start (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :start)))
+             (diagnostic-end (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :end)))
+             (overlay (if (eq diagnostic-start diagnostic-end)
+                          ;; Adjust diagnostic end position if start and end is same position.
+                          (make-overlay diagnostic-start (1+ diagnostic-start))
+                        (make-overlay diagnostic-start diagnostic-end)))
+             (severity (plist-get diagnostic :severity))
+             (message (plist-get diagnostic :message))
+             (overlay-face (cl-case severity
+                             (1 'lsp-bridge-diagnostics-error-face)
+                             (2 'lsp-bridge-diagnostics-warning-face)
+                             (3 'lsp-bridge-diagnostics-info-face)
+                             (4 'lsp-bridge-diagnostics-hint-face))))
+        (overlay-put overlay 'face overlay-face)
+        (overlay-put overlay 'help-echo message)
+        (push  overlay lsp-bridge-diagnostic-overlays)))
+    (setq lsp-bridge-diagnostic-overlays (reverse lsp-bridge-diagnostic-overlays))))
+
+(defun lsp-bridge-show-diagnostic-tooltip (diagnostic-overlay)
+  (let* ((diagnostic-info (overlay-get diagnostic-overlay 'help-echo))
+         (foreground-color (plist-get (face-attribute (overlay-get diagnostic-overlay 'face) :underline) :color)))
+    (goto-char (overlay-start diagnostic-overlay))
+
+    (with-current-buffer (get-buffer-create lsp-bridge-diagnostic-tooltip)
+      (erase-buffer)
+      (insert diagnostic-info))
+
+    (when (posframe-workable-p)
+      ;; Perform redisplay make sure posframe can poup to
+      (redisplay 'force)
+      (sleep-for 0.01)
+      (posframe-show lsp-bridge-diagnostic-tooltip
+                     :position (point)
+                     :internal-border-width lsp-bridge-diagnostic-tooltip-border-width
+                     :background-color (lsp-bridge-frame-background-color)
+                     :foreground-color foreground-color
+                     ))))
+
+(defun lsp-bridge-jump-to-next-diagnostic ()
+  (interactive)
+  (if (zerop (length lsp-bridge-diagnostic-overlays))
+      (message "[LSP-Bridge] No diagnostics.")
+    (if-let ((diagnostic-overlay (cl-find-if
+                                  (lambda (overlay) (< (point) (overlay-start overlay)))
+                                  lsp-bridge-diagnostic-overlays)))
+        (lsp-bridge-show-diagnostic-tooltip diagnostic-overlay)
+      (message "[LSP-Bridge] Reach last diagnostic."))))
+
+(defun lsp-bridge-jump-to-prev-diagnostic ()
+  (interactive)
+  (if (zerop (length lsp-bridge-diagnostic-overlays))
+      (message "[LSP-Bridge] No diagnostics."))
+  (if-let ((diagnostic-overlay (cl-find-if
+                                (lambda (overlay) (> (point) (overlay-end overlay)))
+                                (reverse lsp-bridge-diagnostic-overlays))))
+      (lsp-bridge-show-diagnostic-tooltip diagnostic-overlay)
+    (message "[LSP-Bridge] Reach first diagnostic.")))
+
 ;;;###autoload
 (defun global-lsp-bridge-mode ()
   (interactive)
 
-  (if (eq lsp-bridge-completion-provider 'corfu)
-      (setq corfu-auto t))
+  (setq corfu-auto t)
 
   (dolist (hook lsp-bridge-default-mode-hooks)
     (add-hook hook (lambda ()
-                     (cl-case lsp-bridge-completion-provider
-                       (company
-                        (company-mode 1)
-                        (company-box-mode 1))
-                       (corfu
-                        (corfu-mode 1)))
-
+                     (corfu-mode 1)
                      (lsp-bridge-mode 1)
-                     ))))
+                     )))
+
+  (setq lsp-bridge-diagnostics-timer
+        (run-with-idle-timer lsp-bridge-diagnostics-fetch-idle t #'lsp-bridge-diagnostics-fetch)))
 
 (with-eval-after-load 'evil
   (evil-add-command-properties #'lsp-bridge-find-def :jump t)

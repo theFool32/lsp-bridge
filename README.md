@@ -12,8 +12,8 @@ Lsp-bridge uses python's threading technology to build caches that bridge Emacs 
 
 1. Install Python dependencies: [python-epc](https://github.com/tkf/python-epc)
 2. Install Elisp dependencies:
-+ [corfu](https://github.com/minad/corfu), [orderless](https://github.com/oantolin/orderless) (for corfu users)
-+ [company-mode](https://github.com/company-mode/company-mode), [company-box](https://github.com/sebastiencs/company-box) (for company users)
++ [corfu](https://github.com/minad/corfu)
++ [orderless](https://github.com/oantolin/orderless) 
 + [all-the-icons](https://github.com/domtronn/all-the-icons.el) (need execute command `all-the-icons-install-fonts` to install all-the-icons fonts)
 + [posframe](https://github.com/tumashu/posframe)
 + [markdown-mode](https://github.com/jrblevin/markdown-mode)
@@ -21,7 +21,6 @@ Lsp-bridge uses python's threading technology to build caches that bridge Emacs 
 3. Clone or download this repository (path of the folder is the `<path-to-lsp-bridge>` used below).
 4. Add following code in your ~/.emacs:
 
-Corfu user.
 ```elisp
 (add-to-list 'load-path "<path-to-lsp-bridge>")
 
@@ -31,7 +30,6 @@ Corfu user.
 (require 'lsp-bridge-jdtls)       ;; provide Java third-party library jump and -data directory support, optional
 (yas-global-mode 1)
 
-(setq lsp-bridge-completion-provider 'corfu)
 (require 'corfu)
 (require 'corfu-info)
 (require 'corfu-history)
@@ -39,23 +37,6 @@ Corfu user.
 (corfu-history-mode t)
 (global-lsp-bridge-mode)
 (when (> (frame-pixel-width) 3000) (custom-set-faces '(corfu-default ((t (:height 1.3))))))  ;; adjust default font height when running in HiDPI screen.
-```
-
-Company user
-
-```elisp
-(add-to-list 'load-path "<path-to-lsp-bridge>")
-
-(require 'yasnippet)
-(require 'lsp-bridge)
-(require 'lsp-bridge-icon)        ;; show icons for completion items, optional
-(require 'lsp-bridge-jdtls)       ;; provide Java third-party library jump and -data directory support, optional
-(yas-global-mode 1)
-
-(setq lsp-bridge-completion-provider 'company)
-(require 'company)
-(require 'company-box)
-(global-lsp-bridge-mode)
 ```
 
 ## Commands
@@ -70,6 +51,8 @@ Company user
 * lsp-bridge-popup-documentation-scroll-up: scroll up popup document.
 * lsp-bridge-popup-documentation-scroll-down: scroll down popup document.
 * lsp-bridge-rename: rename symbol under the cursor
+* lsp-bridge-jump-to-next-diagnostic: Jump to the next diagnostic position
+* lsp-bridge-jump-to-prev-diagnostic: Jump to the previous diagnostic position
 * lsp-bridge-show-signature-help-in-minibuffer: show signature help in minibuffer manually (move cursor to parameters area will show signature help automatically)
 * lsp-bridge-insert-common-prefix: insert common prefix of candidates
 * lsp-bridge-restart-process: restart lsp-bridge process (only used for development)
@@ -135,7 +118,6 @@ Welcome to send PR to help us improve support for LSP servers, thanks for your c
 - [ ] Show signature help with eldoc
 - [ ] Code action
 - [ ] Inline Value
-- [ ] Caches diagnostic information, displaying the diagnostic information after user stop typing 1 second
 - [ ] JavaSctipt different code blocks use different language servers
 - [ ] Support completionItem/resolve to implement auto-import for volar
 - [ ] Cache candidate document at Python side, only fetch document information when switch candidate.
@@ -147,6 +129,7 @@ The goal of lsp-bridge is to become the fastest LSP client in Emacs, not a compl
 Emacs can do better for the following tasks, we will not reinvent the wheel in lsp-bridge:
 1. Code formatting: each LSP server has its own formatting specification, we can gain finer control using Emacs' builtin formatting tool.
 2. Syntax highlighting: [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) is a wonderful incremental parsing library for syntax highlighting.
+2. Xref: Xref's mechanism is simultaneously. lsp-bridge is completely asynchronous, recommended to use wrap function to uniformly key
 
 ## Join development
 

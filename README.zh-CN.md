@@ -12,8 +12,8 @@ lsp-bridge使用Python多线程技术在Emacs和LSP服务器之间构建高速�
 
 1. 安装Python依赖: [python-epc](https://github.com/tkf/python-epc)
 2. 安装Elisp依赖:
-+ [corfu](https://github.com/minad/corfu), [orderless](https://github.com/oantolin/orderless) (使用 corfu 补全)
-+ [company-mode](https://github.com/company-mode/company-mode), [company-box](https://github.com/sebastiencs/company-box) (使用 company-mode 补全)
++ [corfu](https://github.com/minad/corfu)
++ [orderless](https://github.com/oantolin/orderless)
 + [all-the-icons](https://github.com/domtronn/all-the-icons.el) (需要在安装all-the-icons后执行命令`all-the-icons-install-fonts`安装图标字体)
 + [posframe](https://github.com/tumashu/posframe)
 + [markdown-mode](https://github.com/jrblevin/markdown-mode)
@@ -21,7 +21,6 @@ lsp-bridge使用Python多线程技术在Emacs和LSP服务器之间构建高速�
 3. 用 `git clone` 下载此仓库，并替换下面配置中的 load-path 路径
 4. 把下面代码加入到你的配置文件 ~/.emacs 中：
 
-Corfu用户
 ```elisp
 (add-to-list 'load-path "<path-to-lsp-bridge>")
 
@@ -31,7 +30,6 @@ Corfu用户
 (require 'lsp-bridge-jdtls)       ;; 提供Java第三方库跳转和-data目录支持， Java用户必选
 (yas-global-mode 1)
 
-(setq lsp-bridge-completion-provider 'corfu)
 (require 'corfu)
 (require 'corfu-info)
 (require 'corfu-history)
@@ -39,22 +37,6 @@ Corfu用户
 (corfu-history-mode t)
 (global-lsp-bridge-mode)
 (when (> (frame-pixel-width) 3000) (custom-set-faces '(corfu-default ((t (:height 1.3))))))  ;; 让corfu适应高分屏
-```
-
-Company用户
-```elisp
-(add-to-list 'load-path "<path-to-lsp-bridge>")
-
-(require 'yasnippet)
-(require 'lsp-bridge)
-(require 'lsp-bridge-icon)        ;; 显示图标在补全菜单中，可选
-(require 'lsp-bridge-jdtls)       ;; 提供Java第三方库跳转和-data目录支持， Java用户必选
-(yas-global-mode 1)
-
-(setq lsp-bridge-completion-provider 'company)
-(require 'company)
-(require 'company-box)
-(global-lsp-bridge-mode)
 ```
 
 ## 命令列表
@@ -69,6 +51,8 @@ Company用户
 * lsp-bridge-popup-documentation-scroll-up: 文档窗口向上滚动
 * lsp-bridge-popup-documentation-scroll-down: 文档窗口向下滚动
 * lsp-bridge-rename: 重命名
+* lsp-bridge-jump-to-next-diagnostic: 跳转到下一个诊断位置
+* lsp-bridge-jump-to-prev-diagnostic: 跳转到上一个诊断位置
 * lsp-bridge-show-signature-help-in-minibuffer: 在minibuffer显示参数信息
 * lsp-bridge-insert-common-prefix: 插入补全后选词的公共前缀
 * lsp-bridge-restart-process: 重启lsp-bridge进程 (一般只有开发者才需要这个功能)
@@ -134,7 +118,6 @@ lsp-bridge每种语言的服务器配置存储在[lsp-bridge/langserver](https:/
 - [ ] 用eldoc来显示参数信息
 - [ ] Code Action: 代码动作， 比如自动修复代码
 - [ ] Inline Value: 行类值显示
-- [ ] 缓存诊断信息，用户停止输入1秒以后再显示诊断信息
 - [ ] JavaSctipt不同的代码块使用不同的语言服务器
 - [ ] 支持completionItem/resolve消息以实现volar的自动导入功能
 - [ ] 缓存后选词文档，只有用户切换后选词时才获取新的文档
@@ -145,6 +128,7 @@ lsp-bridge的目标是实现Emacs生态中性能最快的LSP客户端, 但不是
 下面的功能用Emacs现有生态做更好：
 1. 代码格式化: 每个LSP服务器都有自己的格式配置，使用Emacs内置的格式化工具，我们可以获得更细腻一致的格式化风格
 2. 语法高亮: [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) 是一个静态高性能的语法分析库，比LSP更适合完成语法高亮
+2. Xref: Xref的机制是同步等待， lsp-bridge是完全异步的， 两个机制无法融合， 建议自己编写包装函数来统一按键
 
 ## 加入开发
 
