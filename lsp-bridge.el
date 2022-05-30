@@ -764,20 +764,22 @@ If optional MARKER, return a marker instead"
 
   ;; Send change_file request.
   (when (lsp-bridge-epc-live-p lsp-bridge-epc-process)
-    (let ((completion-frame corfu--frame))
-      (setq-local lsp-bridge-current-tick (lsp-bridge--auto-tick))
-      (lsp-bridge-call-async "change_file"
-                             lsp-bridge-filepath
-                             lsp-bridge--before-change-begin-pos
-                             lsp-bridge--before-change-end-pos
-                             length
-                             (buffer-substring-no-properties begin end)
-                             (lsp-bridge--position)
-                             (lsp-bridge-char-before)
-                             (buffer-substring-no-properties (line-beginning-position) (point))
-                             (and (frame-live-p completion-frame)
-                                  (frame-visible-p completion-frame))
-                             ))))
+    (setq-local lsp-bridge-current-tick (lsp-bridge--auto-tick))
+    (lsp-bridge-call-async "change_file"
+                           lsp-bridge-filepath
+                           lsp-bridge--before-change-begin-pos
+                           lsp-bridge--before-change-end-pos
+                           length
+                           (buffer-substring-no-properties begin end)
+                           (lsp-bridge--position)
+                           (lsp-bridge-char-before)
+                           (buffer-substring-no-properties (line-beginning-position) (point))
+                           (lsp-bridge-completion-ui-visible-p)
+                           )))
+
+(defun lsp-bridge-completion-ui-visible-p ()
+  (and (frame-live-p corfu--frame)
+       (frame-visible-p corfu--frame)))
 
 (defun lsp-bridge-monitor-after-save ()
   (lsp-bridge-call-async "save_file" lsp-bridge-filepath))
@@ -1112,6 +1114,7 @@ If optional MARKER, return a marker instead"
 (defun lsp-bridge-diagnostics-fetch ()
   (when (and lsp-bridge-mode
              (process-live-p lsp-bridge-server)
+             (not (lsp-bridge-completion-ui-visible-p))
              (buffer-file-name))
     (when (string-equal (file-truename (buffer-file-name)) lsp-bridge-filepath)
       (lsp-bridge-call-async "pull_diagnostics" lsp-bridge-filepath))))
@@ -1143,6 +1146,8 @@ If optional MARKER, return a marker instead"
         (push  overlay lsp-bridge-diagnostic-overlays)))
     (setq lsp-bridge-diagnostic-overlays (reverse lsp-bridge-diagnostic-overlays))))
 
+(defvar lsp-bridge-diagnostic-frame nil)
+
 (defun lsp-bridge-show-diagnostic-tooltip (diagnostic-overlay)
   (let* ((diagnostic-info (overlay-get diagnostic-overlay 'help-echo))
          (foreground-color (plist-get (face-attribute (overlay-get diagnostic-overlay 'face) :underline) :color)))
@@ -1156,19 +1161,30 @@ If optional MARKER, return a marker instead"
       ;; Perform redisplay make sure posframe can poup to
       (redisplay 'force)
       (sleep-for 0.01)
-      (posframe-show lsp-bridge-diagnostic-tooltip
-                     :position (point)
-                     :internal-border-width lsp-bridge-diagnostic-tooltip-border-width
-                     :background-color (lsp-bridge-frame-background-color)
-                     :foreground-color foreground-color
-                     ))))
+      (setq lsp-bridge-diagnostic-frame
+            (posframe-show lsp-bridge-diagnostic-tooltip
+                           :position (point)
+                           :internal-border-width lsp-bridge-diagnostic-tooltip-border-width
+                           :background-color (lsp-bridge-frame-background-color)
+                           :foreground-color foreground-color
+                           )))))
+
+(defun lsp-bridge-in-diagnostic-overlay-area-p (overlay)
+  (and
+   lsp-bridge-diagnostic-frame
+   (not (frame-visible-p lsp-bridge-diagnostic-frame))
+   (>= (point) (overlay-start overlay))
+   (<= (point) (overlay-end overlay))))
 
 (defun lsp-bridge-jump-to-next-diagnostic ()
   (interactive)
   (if (zerop (length lsp-bridge-diagnostic-overlays))
       (message "[LSP-Bridge] No diagnostics.")
     (if-let ((diagnostic-overlay (cl-find-if
-                                  (lambda (overlay) (< (point) (overlay-start overlay)))
+                                  (lambda (overlay)
+                                    (or (< (point) (overlay-start overlay))
+                                        ;; Show diagnostic information around cursor if diagnostic frame is not visiable.
+                                        (lsp-bridge-in-diagnostic-overlay-area-p overlay)))
                                   lsp-bridge-diagnostic-overlays)))
         (lsp-bridge-show-diagnostic-tooltip diagnostic-overlay)
       (message "[LSP-Bridge] Reach last diagnostic."))))
@@ -1178,7 +1194,10 @@ If optional MARKER, return a marker instead"
   (if (zerop (length lsp-bridge-diagnostic-overlays))
       (message "[LSP-Bridge] No diagnostics."))
   (if-let ((diagnostic-overlay (cl-find-if
-                                (lambda (overlay) (> (point) (overlay-end overlay)))
+                                (lambda (overlay)
+                                  (or (> (point) (overlay-end overlay))
+                                      ;; Show diagnostic information around cursor if diagnostic frame is not visiable.
+                                      (lsp-bridge-in-diagnostic-overlay-area-p overlay)))
                                 (reverse lsp-bridge-diagnostic-overlays))))
       (lsp-bridge-show-diagnostic-tooltip diagnostic-overlay)
     (message "[LSP-Bridge] Reach first diagnostic.")))
