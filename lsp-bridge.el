@@ -838,7 +838,9 @@ If optional MARKER, return a marker instead"
 (defun lsp-bridge-popup-references (references-content references-counter)
   (if lsp-bridge--xref-wait-for ;;  HACK: more situations should be considered
       (progn
-        (setq lsp-bridge--xref-locations (lsp-bridge--xref-reference-content-to-mark references-content))
+        (setq lsp-bridge--xref-locations
+              (and references-content
+                   (lsp-bridge--xref-reference-content-to-mark references-content)))
         (setq lsp-bridge--xref-wait-for nil))
     (lsp-bridge-ref-popup references-content references-counter)
     (message "[LSP-Bridge] Found %s references" references-counter)))
@@ -886,9 +888,11 @@ If optional MARKER, return a marker instead"
   ;; Record postion.
   (if lsp-bridge--xref-wait-for ;;  TODO: more situations should be considered
       (progn
-        (setq lsp-bridge--xref-locations (list (list filepath
-                                                     (1+ (plist-get position :line))
-                                                     (plist-get position :character))))
+        (setq lsp-bridge--xref-locations
+              (and filepath
+                   (list (list filepath
+                               (1+ (plist-get position :line))
+                               (plist-get position :character)))))
         (setq lsp-bridge--xref-wait-for nil))
     (set-marker (mark-marker) (point) (current-buffer))
     (add-to-history 'lsp-bridge-mark-ring (copy-marker (mark-marker)) lsp-bridge-mark-ring-max t)

@@ -13,7 +13,7 @@ Lsp-bridge uses python's threading technology to build caches that bridge Emacs 
 1. Install Python dependencies: [python-epc](https://github.com/tkf/python-epc)
 2. Install Elisp dependencies:
 + [corfu](https://github.com/minad/corfu)
-+ [orderless](https://github.com/oantolin/orderless) 
++ [orderless](https://github.com/oantolin/orderless)
 + [all-the-icons](https://github.com/domtronn/all-the-icons.el) (need execute command `all-the-icons-install-fonts` to install all-the-icons fonts)
 + [posframe](https://github.com/tumashu/posframe)
 + [markdown-mode](https://github.com/jrblevin/markdown-mode)
@@ -37,6 +37,10 @@ Lsp-bridge uses python's threading technology to build caches that bridge Emacs 
 (corfu-history-mode t)
 (global-lsp-bridge-mode)
 (when (> (frame-pixel-width) 3000) (custom-set-faces '(corfu-default ((t (:height 1.3))))))  ;; adjust default font height when running in HiDPI screen.
+
+;; If need xref
+(add-hook 'lsp-bridge-mode-hook
+               (lambda () (add-hook 'xref-backend-functions #'lsp-bridge-xref-backend nil t)))
 ```
 
 ## Commands
@@ -92,7 +96,7 @@ Welcome to send PR to help us improve support for LSP servers, thanks for your c
 | :--- | :--- | :--- | :--- |
 | 1 | [clangd](https://github.com/clangd/clangd) | c, c++ |  |
 | 2 | [pyright](https://github.com/microsoft/pyright) | python | `pip install pyright`|
-| 3 | [solargraph](https://github.com/castwide/solargraph) | ruby | | 
+| 3 | [solargraph](https://github.com/castwide/solargraph) | ruby | |
 | 4 | [rust-analyzer](https://github.com/rust-lang/rust-analyzer) | rust | |
 | 5 | [elixirLS](https://github.com/elixir-lsp/elixir-ls) | elixir | please ensure that the `elixir-ls` release directory is in your system PATH at first |
 | 6 | [gopls](https://github.com/golang/tools/tree/master/gopls) | go | make sure gopls in PATH, please do `ln -s ~/go/bin/gopls ~/.local/bin` |
@@ -129,7 +133,6 @@ The goal of lsp-bridge is to become the fastest LSP client in Emacs, not a compl
 Emacs can do better for the following tasks, we will not reinvent the wheel in lsp-bridge:
 1. Code formatting: each LSP server has its own formatting specification, we can gain finer control using Emacs' builtin formatting tool.
 2. Syntax highlighting: [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) is a wonderful incremental parsing library for syntax highlighting.
-2. Xref: Xref's mechanism is simultaneously. lsp-bridge is completely asynchronous, recommended to use wrap function to uniformly key
 
 ## Join development
 

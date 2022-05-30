@@ -37,6 +37,11 @@ lsp-bridge使用Python多线程技术在Emacs和LSP服务器之间构建高速�
 (corfu-history-mode t)
 (global-lsp-bridge-mode)
 (when (> (frame-pixel-width) 3000) (custom-set-faces '(corfu-default ((t (:height 1.3))))))  ;; 让corfu适应高分屏
+
+
+;; 如果需要 xref
+(add-hook 'lsp-bridge-mode-hook
+               (lambda () (add-hook 'xref-backend-functions #'lsp-bridge-xref-backend nil t)))
 ```
 
 ## 命令列表
@@ -91,7 +96,7 @@ lsp-bridge每种语言的服务器配置存储在[lsp-bridge/langserver](https:/
 | :--- | :--- | :--- | :--- |
 | 1 | [clangd](https://github.com/clangd/clangd) | c, c++ |  |
 | 2 | [pyright](https://github.com/microsoft/pyright) | python | `pip install pyright`|
-| 3 | [solargraph](https://github.com/castwide/solargraph) | ruby | | 
+| 3 | [solargraph](https://github.com/castwide/solargraph) | ruby | |
 | 4 | [rust-analyzer](https://github.com/rust-lang/rust-analyzer) | rust | |
 | 5 | [elixirLS](https://github.com/elixir-lsp/elixir-ls) | elixir | 请确保导出 `elixir-ls` 目录到你系统的PATH路径 |
 | 6 | [gopls](https://github.com/golang/tools/tree/master/gopls) | go | make sure gopls in PATH, please do `ln -s ~/go/bin/gopls ~/.local/bin` |
@@ -128,7 +133,6 @@ lsp-bridge的目标是实现Emacs生态中性能最快的LSP客户端, 但不是
 下面的功能用Emacs现有生态做更好：
 1. 代码格式化: 每个LSP服务器都有自己的格式配置，使用Emacs内置的格式化工具，我们可以获得更细腻一致的格式化风格
 2. 语法高亮: [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) 是一个静态高性能的语法分析库，比LSP更适合完成语法高亮
-2. Xref: Xref的机制是同步等待， lsp-bridge是完全异步的， 两个机制无法融合， 建议自己编写包装函数来统一按键
 
 ## 加入开发
 

@@ -19,6 +19,7 @@ class FindReferences(Handler):
 
     def process_response(self, response: dict) -> None:
         if response is None:
+            eval_in_emacs("lsp-bridge-popup-references", None, None)
             message_emacs("No references found")
         else:
             references_dict = {}
@@ -51,4 +52,7 @@ class FindReferences(Handler):
 
             linecache.clearcache()  # clear line cache
 
-            eval_in_emacs("lsp-bridge-popup-references", references_content, references_counter)
+            if references_counter > 0:
+                eval_in_emacs("lsp-bridge-popup-references", references_content, references_counter)
+            else:
+                eval_in_emacs("lsp-bridge-popup-references", None, None)

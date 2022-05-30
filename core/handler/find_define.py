@@ -14,6 +14,7 @@ class FindDefine(Handler):
     def process_response(self, response: Union[dict, list]) -> None:
         if not response:
             message_emacs("No definition found.")
+            eval_in_emacs("lsp-bridge--jump-to-def", None, None)
             return
 
         file_info = response[0] if isinstance(response, list) else response
@@ -27,9 +28,11 @@ class FindDefine(Handler):
             self.file_action.handlers["jdt_uri_resolver"].send_request(file_uri, start_pos)
         elif file_uri.startswith("csharp://"):
             # for csharp
+            eval_in_emacs("lsp-bridge--jump-to-def", None, None)
             raise NotImplementedError()
         elif file_uri.startswith("jar://"):
             # for clojure
+            eval_in_emacs("lsp-bridge--jump-to-def", None, None)
             raise NotImplementedError()
         else:
             # for normal file uri
