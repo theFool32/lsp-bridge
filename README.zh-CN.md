@@ -13,6 +13,7 @@ lsp-bridge使用Python多线程技术在Emacs和LSP服务器之间构建高速�
 1. 安装Python依赖: [python-epc](https://github.com/tkf/python-epc)
 2. 安装Elisp依赖:
 + [corfu](https://github.com/minad/corfu)
++ [corfu-doc](https://github.com/galeo/corfu-doc)
 + [orderless](https://github.com/oantolin/orderless)
 + [all-the-icons](https://github.com/domtronn/all-the-icons.el) (需要在安装all-the-icons后执行命令`all-the-icons-install-fonts`安装图标字体)
 + [posframe](https://github.com/tumashu/posframe)
@@ -30,8 +31,6 @@ lsp-bridge使用Python多线程技术在Emacs和LSP服务器之间构建高速�
 (require 'lsp-bridge-jdtls)       ;; 提供Java第三方库跳转和-data目录支持， Java用户必选
 (yas-global-mode 1)
 
-(require 'corfu)
-(require 'corfu-info)
 (require 'corfu-history)
 (require 'lsp-bridge-orderless)   ;; 支持模糊搜索，可选
 (corfu-history-mode t)
@@ -46,33 +45,35 @@ lsp-bridge使用Python多线程技术在Emacs和LSP服务器之间构建高速�
 
 ## 命令列表
 
-* lsp-bridge-find-def: 跳转到定义位置
-* lsp-bridge-find-def-other-window: 在其他窗口跳转到定义位置
-* lsp-bridge-find-impl: 跳转到接口实现位置
-* lsp-bridge-find-impl-other-window: 在其他窗口跳转到接口实现位置
-* lsp-bridge-return-from-def: 返回跳转之前的位置
-* lsp-bridge-find-references: 查看代码引用
-* lsp-bridge-lookup-documentation: 查看光标处的文档
-* lsp-bridge-popup-documentation-scroll-up: 文档窗口向上滚动
-* lsp-bridge-popup-documentation-scroll-down: 文档窗口向下滚动
-* lsp-bridge-rename: 重命名
-* lsp-bridge-jump-to-next-diagnostic: 跳转到下一个诊断位置
-* lsp-bridge-jump-to-prev-diagnostic: 跳转到上一个诊断位置
-* lsp-bridge-show-signature-help-in-minibuffer: 在minibuffer显示参数信息
-* lsp-bridge-insert-common-prefix: 插入补全后选词的公共前缀
-* lsp-bridge-restart-process: 重启lsp-bridge进程 (一般只有开发者才需要这个功能)
+* `lsp-bridge-find-def`: 跳转到定义位置
+* `lsp-bridge-find-def-other-window`: 在其他窗口跳转到定义位置
+* `lsp-bridge-find-impl`: 跳转到接口实现位置
+* `lsp-bridge-find-impl-other-window`: 在其他窗口跳转到接口实现位置
+* `lsp-bridge-return-from-def`: 返回跳转之前的位置
+* `lsp-bridge-find-references`: 查看代码引用
+* `lsp-bridge-lookup-documentation`: 查看光标处的文档
+* `lsp-bridge-popup-documentation-scroll-up`: 文档窗口向上滚动
+* `lsp-bridge-popup-documentation-scroll-down`: 文档窗口向下滚动
+* `lsp-bridge-rename`: 重命名
+* `lsp-bridge-jump-to-next-diagnostic`: 跳转到下一个诊断位置
+* `lsp-bridge-jump-to-prev-diagnostic`: 跳转到上一个诊断位置
+* `lsp-bridge-show-signature-help-in-minibuffer`: 在minibuffer显示参数信息
+* `lsp-bridge-insert-common-prefix`: 插入补全后选词的公共前缀
+* `lsp-bridge-restart-process`: 重启lsp-bridge进程 (一般只有开发者才需要这个功能)
 
-## 自定义lsp-bridge按键
-可以为 lsp-bridge 命令列表自定义对应的按键
-
-eg:
-```elisp
-(defvar lsp-bridge-mode-map
-    (let ((keymap (make-sparse-keymap)))
-    (define-key keymap (kbd "C-j") 'lsp-bridge-popup-documentation-scroll-up)
-    (define-key keymap (kbd "C-k") 'lsp-bridge-popup-documentation-scroll-down)
-    keymap))
-```
+## 选项
+* `lsp-bridge-completion-popup-predicates`: 补全菜单显示的检查函数， 这个选项包括的所有函数都检查过以后， 补全菜单才能显示
+* `lsp-bridge-completion-stop-commands`: 这些命令执行以后，不再弹出补全菜单
+* `lsp-bridge-completion-hide-characters`: 这些字符的后面不再弹出补全菜单
+* `lsp-bridge-diagnostics-fetch-idle`： 诊断延迟，默认是停止敲键盘后1秒开始拉取诊断信息
+* `lsp-bridge-enable-auto-import`: 支持自动导入， 默认打开
+* `lsp-bridge-enable-diagnostics`: 代码诊断， 默认打开
+* `lsp-bridge-enable-candidate-doc-preview`: 支持后选词文档预览， 默认打开
+* `lsp-bridge-enable-signature-help`: 支持函数参数显示， 默认关闭
+* `lsp-bridge-org-babel-lang-list`: 支持org-mode代码块补全的语言列表
+* `lsp-bridge-disable-backup`: 禁止emacs对文件做版本管理， 默认打开
+* `lsp-bridge-enable-log`: 启用LSP消息日志， 默认关闭
+* `lsp-bridge-enable-debug`: 启用程序调试， 默认关闭
 
 ## 自定义语言服务器配置
 lsp-bridge每种语言的服务器配置存储在[lsp-bridge/langserver](https://github.com/manateelazycat/lsp-bridge/tree/master/langserver).
@@ -120,12 +121,8 @@ lsp-bridge每种语言的服务器配置存储在[lsp-bridge/langserver](https:/
 
 ### 需要完成的功能：
 
-- [ ] 用eldoc来显示参数信息
 - [ ] Code Action: 代码动作， 比如自动修复代码
-- [ ] Inline Value: 行类值显示
-- [ ] JavaSctipt不同的代码块使用不同的语言服务器
-- [ ] 支持completionItem/resolve消息以实现volar的自动导入功能
-- [ ] 缓存后选词文档，只有用户切换后选词时才获取新的文档
+- [ ] 用eldoc来显示参数信息
 
 ### 不会支持的特性：
 lsp-bridge的目标是实现Emacs生态中性能最快的LSP客户端, 但不是实现LSP协议最全的LSP客户端。

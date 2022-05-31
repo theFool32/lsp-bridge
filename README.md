@@ -13,6 +13,7 @@ Lsp-bridge uses python's threading technology to build caches that bridge Emacs 
 1. Install Python dependencies: [python-epc](https://github.com/tkf/python-epc)
 2. Install Elisp dependencies:
 + [corfu](https://github.com/minad/corfu)
++ [corfu-doc](https://github.com/galeo/corfu-doc)
 + [orderless](https://github.com/oantolin/orderless)
 + [all-the-icons](https://github.com/domtronn/all-the-icons.el) (need execute command `all-the-icons-install-fonts` to install all-the-icons fonts)
 + [posframe](https://github.com/tumashu/posframe)
@@ -30,8 +31,6 @@ Lsp-bridge uses python's threading technology to build caches that bridge Emacs 
 (require 'lsp-bridge-jdtls)       ;; provide Java third-party library jump and -data directory support, optional
 (yas-global-mode 1)
 
-(require 'corfu)
-(require 'corfu-info)
 (require 'corfu-history)
 (require 'lsp-bridge-orderless)   ;; make lsp-bridge support fuzzy match, optional
 (corfu-history-mode t)
@@ -45,33 +44,35 @@ Lsp-bridge uses python's threading technology to build caches that bridge Emacs 
 
 ## Commands
 
-* lsp-bridge-find-def: jump to the definition
-* lsp-bridge-find-def-other-window: jump to the definition in other-window
-* lsp-bridge-find-impl: jump to the implementation
-* lsp-bridge-find-impl-other-window: jump to the implementation in other-window
-* lsp-bridge-return-from-def: return to the location before calling `lsp-bridge-find-def`
-* lsp-bridge-find-references: traverse across code references (forked from color-rg.el)
-* lsp-bridge-lookup-documentation: lookup documentation of symbol under the cursor
-* lsp-bridge-popup-documentation-scroll-up: scroll up popup document.
-* lsp-bridge-popup-documentation-scroll-down: scroll down popup document.
-* lsp-bridge-rename: rename symbol under the cursor
-* lsp-bridge-jump-to-next-diagnostic: Jump to the next diagnostic position
-* lsp-bridge-jump-to-prev-diagnostic: Jump to the previous diagnostic position
-* lsp-bridge-show-signature-help-in-minibuffer: show signature help in minibuffer manually (move cursor to parameters area will show signature help automatically)
-* lsp-bridge-insert-common-prefix: insert common prefix of candidates
-* lsp-bridge-restart-process: restart lsp-bridge process (only used for development)
+* `lsp-bridge-find-def`: jump to the definition
+* `lsp-bridge-find-def-other-window`: jump to the definition in other-window
+* `lsp-bridge-find-impl`: jump to the implementation
+* `lsp-bridge-find-impl-other-window`: jump to the implementation in other-window
+* `lsp-bridge-return-from-def`: return to the location before calling `lsp-bridge-find-def`
+* `lsp-bridge-find-references`: traverse across code references (forked from color-rg.el)
+* `lsp-bridge-lookup-documentation`: lookup documentation of symbol under the cursor
+* `lsp-bridge-popup-documentation-scroll-up`: scroll up popup document.
+* `lsp-bridge-popup-documentation-scroll-down`: scroll down popup document.
+* `lsp-bridge-rename`: rename symbol under the cursor
+* `lsp-bridge-jump-to-next-diagnostic`: Jump to the next diagnostic position
+* `lsp-bridge-jump-to-prev-diagnostic`: Jump to the previous diagnostic position
+* `lsp-bridge-show-signature-help-in-minibuffer`: show signature help in minibuffer manually (move cursor to parameters area will show signature help automatically)
+* `lsp-bridge-insert-common-prefix`: insert common prefix of candidates
+* `lsp-bridge-restart-process`: restart lsp-bridge process (only used for development)
 
-## Customize lsp-bridge keymap
-customize keymap for lsp-bridge commands.
-
-eg:
-```elisp
-(defvar lsp-bridge-mode-map
-    (let ((keymap (make-sparse-keymap)))
-    (define-key keymap (kbd "C-j") 'lsp-bridge-popup-documentation-scroll-up)
-    (define-key keymap (kbd "C-k") 'lsp-bridge-popup-documentation-scroll-down)
-    keymap))
-```
+## Options
+* `lsp-bridge-completion-popup-predicates`: the predicate function for completion menu, completion menu popup after all the functions pass
+* `lsp-bridge-completion-stop-commands`: completion menu will not popup if these commands are executed
+* `lsp-bridge-completion-hide-characters`: completion menu will not popup when cursor after those characters
+* `lsp-bridge-diagnostics-fetch-idle`: diagnostic delay, start pulling diagnostic information 1 second after stopping typing
+* `lsp-bridge-enable-auto-import`: automatic insert import code, enable by default
+* `lsp-bridge-enable-diagnostics`: code diagnostic, enable by default
+* `lsp-bridge-enable-candidate-doc-preview`: preview of the candidate document, enable by default
+* `lsp-bridge-enable-signature-help`: show function parameter in minibufer, disable by default
+* `lsp-bridge-org-babel-lang-list`: list of language to support org-mode code block completion
+* `lsp-bridge-disable-backup`: forbidden version manage of emacs, enable by default
+* `lsp-bridge-enable-log`: enable the LSP message log, disable by default
+* `lsp-bridge-enable-debug`: enable program debugging, disable by default
 
 ## Customize language server configuration
 
@@ -119,12 +120,8 @@ Welcome to send PR to help us improve support for LSP servers, thanks for your c
 
 ### TODO:
 
-- [ ] Show signature help with eldoc
 - [ ] Code action
-- [ ] Inline Value
-- [ ] JavaSctipt different code blocks use different language servers
-- [ ] Support completionItem/resolve to implement auto-import for volar
-- [ ] Cache candidate document at Python side, only fetch document information when switch candidate.
+- [ ] Show signature help with eldoc
 
 ### Features that won't be supported
 

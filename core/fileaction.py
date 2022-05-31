@@ -48,6 +48,8 @@ class FileAction:
         self.version = 1
         
         self.last_completion_candidates = []
+        
+        self.completion_items = {}
 
         self.try_completion_timer = None
         self.try_signature_help_timer = None
@@ -126,3 +128,7 @@ class FileAction:
 
     def handle_server_response_message(self, request_id, request_type, response):
         self.handlers[request_type].handle_response(request_id, response)
+        
+    def completion_item_resolve(self, label, item_key):
+        if item_key in self.completion_items:
+            self.handlers["completion_item_resolve"].send_request(label, self.completion_items[item_key])
