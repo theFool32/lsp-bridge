@@ -1,5 +1,12 @@
 English | [简体中文](./README.zh-CN.md)
 
+# About
+
+This is a fork of [lsp-bridge](https://github.com/manateelazycat/lsp-bridge) for personal usage with support for:
+
+- xref
+- project.el
+
 # lsp-bridge
 
 Lsp-bridge's goal is to become the fastest LSP client in Emacs.

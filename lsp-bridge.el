@@ -206,6 +206,7 @@ Start discarding off end if gets this big."
                (lsp-bridge-epc-define-method mngr 'get-lang-server 'lsp-bridge--get-lang-server-func)
                (lsp-bridge-epc-define-method mngr 'get-emacs-version 'emacs-version)
                (lsp-bridge-epc-define-method mngr 'is-snippet-support 'lsp-bridge--snippet-expansion-fn)
+               (lsp-bridge-epc-define-method mngr 'get-project-root 'lsp-bridge-project-root)
                ))))
     (if lsp-bridge-server
         (setq lsp-bridge-server-port (process-contact lsp-bridge-server :service))
@@ -1373,6 +1374,16 @@ If optional MARKER, return a marker instead"
   (dolist (lang lsp-bridge-org-babel-lang-list)
     (eval `(lsp-org-babel-enable ,lang))))
 
+
+;;; project
+;; Currently only `project.el' is supported. PR about `projectile' or others are welcome.
+(defun lsp-bridge-project-root (&optional dir)
+  "Return the project root of DIR."
+  (when-let* ((default-directory (or dir default-directory))
+              (project (project-current)))
+    (expand-file-name (if (fboundp 'project-root)
+                          (project-root project)
+                        (cdr project)))))
 
 ;;; xref
 

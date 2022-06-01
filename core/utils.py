@@ -19,14 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import functools
-from typing import Optional
-from urllib.parse import urlparse
-
-import sexpdata
 import logging
 import pathlib
 import platform
 import sys
+from typing import Optional
+from urllib.parse import urlparse
+
+import sexpdata
 from epc.client import EPCClient
 
 KIND_MAP = ["", "Text", "Method", "Function", "Constructor", "Field",
@@ -137,6 +137,7 @@ def generate_request_id():
 # modified from Lib/pathlib.py
 def _make_uri_win32(path):
     from urllib.parse import quote_from_bytes as urlquote_from_bytes
+
     # Under Windows, file URIs use the UTF-8 encoding.
     drive = path.drive
     if len(drive) == 2 and drive[1] == ':':
@@ -163,6 +164,7 @@ def path_to_uri(path):
 
 def uri_to_path(uri):
     from urllib.parse import unquote
+
     # parse first, '#' may be part of filepath(encoded)
     parsed = urlparse(uri)
     # for example, ts-ls return 'file:///c%3A/lib/ref.js'
@@ -201,10 +203,8 @@ def get_from_path_dict(path_dict, filepath):
 def get_project_path(filepath):
     import os
     dir_path = os.path.dirname(filepath)
-    if get_command_result("git rev-parse --is-inside-work-tree", dir_path) == "true":
-        return get_command_result("git rev-parse --show-toplevel", dir_path)
-    else:
-        return filepath
+    project_path = get_emacs_func_result("get-project-root", dir_path)
+    return project_path or filepath
 
 
 @functools.lru_cache(maxsize=None)
