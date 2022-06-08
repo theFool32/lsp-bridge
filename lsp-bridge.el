@@ -403,6 +403,28 @@ Auto completion is only performed if the tick did not change."
   "Call Python EPC function METHOD and ARGS synchronously."
   (lsp-bridge-epc-call-sync lsp-bridge-epc-process (read method) args))
 
+(defvar-local lsp-bridge-buffer-file-deleted nil)
+
+(defun lsp-bridge-call-file-api (method &rest args)
+  (if (file-exists-p lsp-bridge-filepath)
+      (if lsp-bridge-buffer-file-deleted
+          ;; If buffer's file create again (such as switch branch back), we need save buffer first,
+          ;; send the LSP request after the file is changed next time.
+          (progn
+            (save-buffer)
+            (setq-local lsp-bridge-buffer-file-deleted nil)
+            (message "[LSP-Bridge] %s is back, will send the LSP request after the file is changed next time." lsp-bridge-filepath))
+        (lsp-bridge-deferred-chain
+          (lsp-bridge-epc-call-deferred lsp-bridge-epc-process (read method) (append (list lsp-bridge-filepath) args))))
+    ;; We need send `closeFile' request to lsp server if we found buffer's file is not exist,
+    ;; it is usually caused by switching branch or other tools to delete file.
+    ;;
+    ;; We won't send any lsp request until buffer's file create again.
+    (unless lsp-bridge-buffer-file-deleted
+      (lsp-bridge-close-buffer-file)
+      (setq-local lsp-bridge-buffer-file-deleted t)
+      (message "[LSP-Bridge] %s is not exist, stop send the LSP request until file create again." lsp-bridge-filepath))))
+
 (defvar lsp-bridge-is-starting nil)
 
 (defun lsp-bridge-restart-process ()
@@ -462,7 +484,6 @@ Auto completion is only performed if the tick did not change."
 
 (defun lsp-bridge--kill-python-process ()
   "Kill LSP-Bridge background python process."
-  (interactive)
   (when (lsp-bridge-epc-live-p lsp-bridge-epc-process)
     ;; Cleanup before exit LSP-Bridge server process.
     (lsp-bridge-call-async "cleanup")
@@ -507,7 +528,7 @@ Auto completion is only performed if the tick did not change."
 (defun lsp-bridge-monitor-post-command ()
   (when (lsp-bridge-epc-live-p lsp-bridge-epc-process)
     (unless (equal (point) lsp-bridge-last-position)
-      (lsp-bridge-call-async "change_cursor" lsp-bridge-filepath (lsp-bridge--position))
+      (lsp-bridge-call-file-api "change_cursor" (lsp-bridge--position))
       (setq-local lsp-bridge-last-position (point))))
 
   ;; Hide hover tooltip.
@@ -781,26 +802,26 @@ If optional MARKER, return a marker instead"
   (setq lsp-bridge-last-change-command (format "%s" this-command))
 
   ;; Send change_file request.
+  (setq-local lsp-bridge-current-tick (lsp-bridge--auto-tick))
+
   (when (lsp-bridge-epc-live-p lsp-bridge-epc-process)
-    (setq-local lsp-bridge-current-tick (lsp-bridge--auto-tick))
-    (lsp-bridge-call-async "change_file"
-                           lsp-bridge-filepath
-                           lsp-bridge--before-change-begin-pos
-                           lsp-bridge--before-change-end-pos
-                           length
-                           (buffer-substring-no-properties begin end)
-                           (lsp-bridge--position)
-                           (lsp-bridge-char-before)
-                           (buffer-substring-no-properties (line-beginning-position) (point))
-                           (lsp-bridge-completion-ui-visible-p)
-                           )))
+    (lsp-bridge-call-file-api "change_file"
+                              lsp-bridge--before-change-begin-pos
+                              lsp-bridge--before-change-end-pos
+                              length
+                              (buffer-substring-no-properties begin end)
+                              (lsp-bridge--position)
+                              (lsp-bridge-char-before)
+                              (buffer-substring-no-properties (line-beginning-position) (point))
+                              (lsp-bridge-completion-ui-visible-p)
+                              )))
 
 (defun lsp-bridge-completion-ui-visible-p ()
   (and (frame-live-p corfu--frame)
        (frame-visible-p corfu--frame)))
 
 (defun lsp-bridge-monitor-after-save ()
-  (lsp-bridge-call-async "save_file" lsp-bridge-filepath))
+  (lsp-bridge-call-file-api "save_file"))
 
 (defalias 'lsp-bridge-find-define #'lsp-bridge-find-def)
 
@@ -809,12 +830,12 @@ If optional MARKER, return a marker instead"
 (defun lsp-bridge-find-def ()
   (interactive)
   (setq-local lsp-bridge-jump-to-def-in-other-window nil)
-  (lsp-bridge-call-async "find_define" lsp-bridge-filepath (lsp-bridge--position)))
+  (lsp-bridge-call-file-api "find_define" (lsp-bridge--position)))
 
 (defun lsp-bridge-find-def-other-window ()
   (interactive)
   (setq-local lsp-bridge-jump-to-def-in-other-window t)
-  (lsp-bridge-call-async "find_define" lsp-bridge-filepath (lsp-bridge--position)))
+  (lsp-bridge-call-file-api "find_define" (lsp-bridge--position)))
 
 (defun lsp-bridge-return-from-def ()
   "Pop off lsp-bridge-mark-ring and jump to the top location."
@@ -842,16 +863,16 @@ If optional MARKER, return a marker instead"
 (defun lsp-bridge-find-impl ()
   (interactive)
   (setq-local lsp-bridge-jump-to-def-in-other-window nil)
-  (lsp-bridge-call-async "find_implementation" lsp-bridge-filepath (lsp-bridge--position)))
+  (lsp-bridge-call-file-api "find_implementation" (lsp-bridge--position)))
 
 (defun lsp-bridge-find-impl-other-window ()
   (interactive)
   (setq-local lsp-bridge-jump-to-def-in-other-window t)
-  (lsp-bridge-call-async "find_implementation" lsp-bridge-filepath (lsp-bridge--position)))
+  (lsp-bridge-call-file-api "find_implementation" (lsp-bridge--position)))
 
 (defun lsp-bridge-find-references ()
   (interactive)
-  (lsp-bridge-call-async "find_references" lsp-bridge-filepath (lsp-bridge--position)))
+  (lsp-bridge-call-file-api "find_references" (lsp-bridge--position)))
 
 (defun lsp-bridge-popup-references (references-content references-counter)
   (if lsp-bridge--xref-wait-for ;;  HACK: more situations should be considered
@@ -865,9 +886,9 @@ If optional MARKER, return a marker instead"
 
 (defun lsp-bridge-rename ()
   (interactive)
-  (lsp-bridge-call-async "prepare_rename" lsp-bridge-filepath (lsp-bridge--position))
+  (lsp-bridge-call-file-api "prepare_rename" (lsp-bridge--position))
   (let ((new-name (read-string "Rename to: " (thing-at-point 'symbol 'no-properties))))
-    (lsp-bridge-call-async "rename" lsp-bridge-filepath (lsp-bridge--position) new-name)))
+    (lsp-bridge-call-file-api "rename" (lsp-bridge--position) new-name)))
 
 (defun lsp-bridge-rename-highlight (filepath bound-start bound-end)
   (lsp-bridge--with-file-buffer filepath
@@ -881,11 +902,11 @@ If optional MARKER, return a marker instead"
 
 (defun lsp-bridge-lookup-documentation ()
   (interactive)
-  (lsp-bridge-call-async "hover" lsp-bridge-filepath (lsp-bridge--position)))
+  (lsp-bridge-call-file-api "hover" (lsp-bridge--position)))
 
 (defun lsp-bridge-show-signature-help-in-minibuffer ()
   (interactive)
-  (lsp-bridge-call-async "signature_help" lsp-bridge-filepath (lsp-bridge--position)))
+  (lsp-bridge-call-file-api "signature_help" (lsp-bridge--position)))
 
 (defun lsp-bridge-rename-file (filepath edits)
   (find-file-noselect filepath)
@@ -902,7 +923,6 @@ If optional MARKER, return a marker instead"
   (setq lsp-bridge-prohibit-completion t))
 
 (defun lsp-bridge--jump-to-def (filepath position)
-  (interactive)
   ;; Record postion.
   (if lsp-bridge--xref-wait-for ;;  TODO: more situations should be considered
       (progn
@@ -1100,13 +1120,6 @@ If optional MARKER, return a marker instead"
 
     (advice-add #'corfu--popup-hide :after #'lsp-bridge--completion-hide-advisor)
 
-    (when (featurep 'lsp-bridge-icon)
-      (add-to-list 'corfu-margin-formatters #'lsp-bridge-icon-margin-formatter))
-
-    ;; Add fuzzy match.
-    (when (functionp 'lsp-bridge-orderless-setup)
-      (lsp-bridge-orderless-setup))
-
     (corfu-doc-mode 1)
 
     ;; Flag `lsp-bridge-is-starting' make sure only call `lsp-bridge-start-process' once.
@@ -1139,7 +1152,7 @@ If optional MARKER, return a marker instead"
              (not (lsp-bridge-completion-ui-visible-p))
              (buffer-file-name))
     (when (string-equal (file-truename (buffer-file-name)) lsp-bridge-filepath)
-      (lsp-bridge-call-async "pull_diagnostics" lsp-bridge-filepath))))
+      (lsp-bridge-call-file-api "pull_diagnostics"))))
 
 (defun lsp-bridge-diagnostics-render (filepath diagnostics)
   (lsp-bridge--with-file-buffer filepath
@@ -1149,23 +1162,31 @@ If optional MARKER, return a marker instead"
 
     (setq lsp-bridge-diagnostic-overlays nil)
 
-    (dolist (diagnostic diagnostics)
-      (let* ((diagnostic-start (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :start)))
-             (diagnostic-end (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :end)))
-             (overlay (if (eq diagnostic-start diagnostic-end)
-                          ;; Adjust diagnostic end position if start and end is same position.
-                          (make-overlay diagnostic-start (1+ diagnostic-start))
-                        (make-overlay diagnostic-start diagnostic-end)))
-             (severity (plist-get diagnostic :severity))
-             (message (plist-get diagnostic :message))
-             (overlay-face (cl-case severity
-                             (1 'lsp-bridge-diagnostics-error-face)
-                             (2 'lsp-bridge-diagnostics-warning-face)
-                             (3 'lsp-bridge-diagnostics-info-face)
-                             (4 'lsp-bridge-diagnostics-hint-face))))
-        (overlay-put overlay 'face overlay-face)
-        (overlay-put overlay 'help-echo message)
-        (push  overlay lsp-bridge-diagnostic-overlays)))
+    (let ((diagnostic-index 0)
+          (diagnostic-number (length diagnostics)))
+      (dolist (diagnostic diagnostics)
+        (let* ((diagnostic-start (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :start)))
+               (diagnostic-end (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :end)))
+               (overlay (if (eq diagnostic-start diagnostic-end)
+                            ;; Adjust diagnostic end position if start and end is same position.
+                            (make-overlay diagnostic-start (1+ diagnostic-start))
+                          (make-overlay diagnostic-start diagnostic-end)))
+               (severity (plist-get diagnostic :severity))
+               (message (plist-get diagnostic :message))
+               (overlay-face (cl-case severity
+                               (1 'lsp-bridge-diagnostics-error-face)
+                               (2 'lsp-bridge-diagnostics-warning-face)
+                               (3 'lsp-bridge-diagnostics-info-face)
+                               (4 'lsp-bridge-diagnostics-hint-face))))
+          (overlay-put overlay 'face overlay-face)
+          (overlay-put overlay
+                       'help-echo
+                       (if (> diagnostic-number 1)
+                           (format "[%s:%s] %s" (1+ diagnostic-index) diagnostic-number message)
+                         message))
+          (push  overlay lsp-bridge-diagnostic-overlays))
+
+        (setq diagnostic-index (1+ diagnostic-index))))
     (setq lsp-bridge-diagnostic-overlays (reverse lsp-bridge-diagnostic-overlays))))
 
 (defvar lsp-bridge-diagnostic-frame nil)
@@ -1249,7 +1270,7 @@ If optional MARKER, return a marker instead"
   (unless (string-equal documentation "")
     (unless (corfu-doc--popup-support-p)
       (error "Corfu-doc requires child frames to display documentation."))
-    (when (corfu-doc--should-show-popup)
+    (when (corfu-doc--should-show-popup) ;;  TODO: check if current index is the same for the documentation
       (when-let ((candidate (corfu-doc--get-candidate))
                  (cf-popup-edges (corfu-doc--get-cf-popup-edges)))
         (if (corfu-doc--should-refresh-popup candidate)
@@ -1260,9 +1281,6 @@ If optional MARKER, return a marker instead"
           (corfu-doc--set-vars
            candidate cf-popup-edges (selected-window))
           ))))
-  ;;  TODO: I will get errors like:
-  ;; ERROR:epc:(return 74 ...): Got too many arguments in the reply: [Symbol('#<window'), 3, Symbol('on'), Symbol('main.py>')]
-  ;; which may be from the last command in `corfu-doc--set-vars'. A `nil' value fixes it but I don't know why.
   nil)
 
 (defun lsp-bridge-render-markdown-content ()
@@ -1299,7 +1317,7 @@ If optional MARKER, return a marker instead"
 (defun lsp-bridge--rename-file-advisor (orig-fun &optional arg &rest args)
   (when lsp-bridge-mode
     (let ((new-name (expand-file-name (nth 0 args))))
-      (lsp-bridge-call-async "rename_file" lsp-bridge-filepath new-name)
+      (lsp-bridge-call-file-api "rename_file" new-name)
       (lsp-bridge-call-async "close_file" lsp-bridge-filepath)
       (set-visited-file-name new-name t t)
       (setq lsp-bridge-filepath new-name)))
@@ -1338,7 +1356,7 @@ If optional MARKER, return a marker instead"
 (defun lsp-bridge--completion-hide-advisor (&rest args)
   (when lsp-bridge-mode
     ;; Hide completion ui.
-    (lsp-bridge-call-async "completion_hide" lsp-bridge-filepath)
+    (lsp-bridge-call-file-api "completion_hide")
 
     ;; Clean completion item tick.
     (setq-local lsp-bridge-completion-item-fetch-tick nil)
