@@ -249,7 +249,8 @@ class LspServer:
 
         merge_capabilites = merge(server_capabilities, {
             "workspace": {
-                "configuration": True
+                "configuration": True,
+                "applyEdit": True,
             },
             "textDocument": {
                 "completion": {
