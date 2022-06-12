@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 # Copyright (C) 2022 Andy Stewart
 #
 # Author:     Andy Stewart <lazycat.manatee@gmail.com>
@@ -21,12 +22,11 @@
 import pprint
 import threading
 import time
-import os
-from typing import Dict, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Tuple
 
+from core.handler import *
 from core.lspserver import LspServer
 from core.utils import *
-from core.handler import *
 
 if TYPE_CHECKING:
     from lsp_bridge import LspBridge
@@ -46,14 +46,13 @@ class FileAction:
         self.last_change_file_before_cursor_text = ""
         self.last_change_cursor_time = -1.0
         self.version = 1
-        
+
         self.last_completion_candidates = []
-        
+
         self.completion_items = {}
 
         self.try_completion_timer = None
-        self.try_signature_help_timer = None
-        
+
         self.diagnostics = []
 
         # Initialize handlers.
@@ -97,7 +96,7 @@ class FileAction:
         # Send textDocument/completion 100ms later.
         self.try_completion_timer = threading.Timer(0.1, lambda : self.try_completion(position, before_char, completion_visible))
         self.try_completion_timer.start()
-        
+
     def try_completion(self, position, before_char, completion_visible):
         # Only send textDocument/completion request when match one of following rules:
         # 1. Character before cursor is match completion trigger characters.
@@ -107,28 +106,22 @@ class FileAction:
             (not completion_visible) or
             len(self.last_completion_candidates) == 0):
             self.handlers["completion"].send_request(position, before_char)
-            
+
+    def try_prepare_rename(self, position):
+        # Send textDocument/prepareRename request if LSP server has this capability.
+        if self.lsp_server.rename_prepare_provider:
+            self.handlers["prepare_rename"].send_request(position)
+
     def change_cursor(self, position):
         # Record change cursor time.
         self.last_change_cursor_time = time.time()
-
-        if self.enable_signature_help:
-            # Try cancel expired signature help timer.
-            if self.try_signature_help_timer is not None and self.try_signature_help_timer.is_alive():
-                self.try_signature_help_timer.cancel()
-
-            # Send textDocument/signatureHelp 200ms later.
-            self.try_signature_help_timer = threading.Timer(
-                0.2, lambda: self.handlers["signature_help"].send_request(position)
-            )
-            self.try_signature_help_timer.start()
 
     def save_file(self):
         self.lsp_server.send_did_save_notification(self.filepath)
 
     def handle_server_response_message(self, request_id, request_type, response):
         self.handlers[request_type].handle_response(request_id, response)
-        
+
     def completion_item_resolve(self, label, item_key):
         if item_key in self.completion_items:
             self.handlers["completion_item_resolve"].send_request(label, self.completion_items[item_key])
