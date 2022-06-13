@@ -687,8 +687,7 @@ Auto completion is only performed if the tick did not change."
            (when (memq status '(finished exact))
              ;; Because lsp-bridge will push new candidates when company/lsp-bridge-ui completing.
              ;; We need extract newest candidates when insert, avoid insert old candidate content.
-             (let* ((candidates (hash-table-keys lsp-bridge-completion-candidates))
-                    (candidate-index (cl-find candidate candidates :test #'string=)))
+             (let* ((candidate-index (cl-find candidate candidates :test #'string=)))
                (with-current-buffer (if (minibufferp)
                                         (window-buffer (minibuffer-selected-window))
                                       (current-buffer))
