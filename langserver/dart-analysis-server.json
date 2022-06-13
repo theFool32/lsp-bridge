@@ -2,5 +2,10 @@
   "name": "dart-analysis-server",
   "languageId": "dart",
   "command": ["dart", "language-server", "--client-id", "emacs.lsp-bridge"],
-  "settings": {}
+  "settings": {
+    "dart": {
+      "completeFunctionCalls": true,
+      "enableSnippets": true
+    }
+  }
 }
