@@ -646,69 +646,6 @@ Auto completion is only performed if the tick did not change."
   "If `evil' mode is enable, only show completion when evil is in insert mode."
   (or (not (featurep 'evil)) (evil-insert-state-p)))
 
-(defun lsp-bridge--exit-function (candidate status)
-  ;; Only expand candidate when status is `finished'.
-  ;; Otherwise we execute command `backward-delete-char-untabify' will cause candidate expand.
-  (when (memq status '(finished exact))
-    ;; Because lsp-bridge will push new candidates when company/lsp-bridge-ui completing.
-    ;; We need extract newest candidates when insert, avoid insert old candidate content.
-    (let* ((candidates (hash-table-keys lsp-bridge-completion-candidates))
-           (candidate-index (cl-find candidate candidates :test #'string=)))
-      (with-current-buffer (if (minibufferp)
-                               (window-buffer (minibuffer-selected-window))
-                             (current-buffer))
-        (cond
-         ;; Don't expand candidate if the user enters all characters manually.
-         ;; ((and (member candidate candidates)
-         ;;       (eq this-command 'self-insert-command)))
-         ;; Just insert candidate if it has expired.
-         ((null candidate-index))
-         (t
-          (let* ((label (string-trim candidate)) ; we need trim candidate
-                 (candidate-info (lsp-bridge-get-candidate-item candidate))
-                 (insert-text (plist-get candidate-info :insertText))
-                 (insert-text-format (plist-get candidate-info :insertTextFormat))
-                 (text-edit (plist-get candidate-info :textEdit))
-                 (new-text (plist-get text-edit :newText))
-                 (additionalTextEdits (plist-get candidate-info :additionalTextEdits))
-                 (kind (plist-get candidate-info :kind))
-                 (snippet-fn (and (or (eql insert-text-format 2) (string= kind "Snippet")) (lsp-bridge--snippet-expansion-fn)))
-                 (completion-start-pos (lsp-bridge--lsp-position-to-point lsp-bridge-completion-position))
-                 (delete-start-pos (if text-edit
-                                       (lsp-bridge--lsp-position-to-point (plist-get (plist-get text-edit :range) :start))
-                                     bounds-start))
-                 (range-end-pos (if text-edit
-                                    (lsp-bridge--lsp-position-to-point (plist-get (plist-get text-edit :range) :end))
-                                  completion-start-pos))
-                 (delete-end-pos (+ (point) (- range-end-pos completion-start-pos)))
-                 (insert-candidate (or new-text insert-text label)))
-
-            ;; Move bound start position forward one character, if the following situation is satisfied:
-            ;; 1. `textEdit' is not exist
-            ;; 2. bound-start character is `lsp-bridge-completion-trigger-characters'
-            ;; 3. `label' start with bound-start character
-            ;; 4. `insertText' is not start with bound-start character
-            (unless text-edit
-              (let* ((bound-start-char (save-excursion
-                                         (goto-char delete-start-pos)
-                                         (char-to-string (char-after)))))
-                (when (and (member bound-start-char lsp-bridge-completion-trigger-characters)
-                           (string-prefix-p bound-start-char label)
-                           (not (string-prefix-p bound-start-char insert-text)))
-                  (setq delete-start-pos (1+ delete-start-pos)))))
-
-            ;; Delete region.
-            (delete-region delete-start-pos delete-end-pos)
-
-            ;; Insert candidate or expand snippet.
-            (funcall (or snippet-fn #'insert) insert-candidate)
-
-            ;; Do `additionalTextEdits' if return auto-imprt information.
-            (when (and lsp-bridge-enable-auto-import
-                       (cl-plusp (length additionalTextEdits)))
-              (lsp-bridge--apply-text-edits additionalTextEdits))
-            )))))))
-
 (defun lsp-bridge-capf (&optional interactive)
   "Capf function"
   (interactive (list t))
@@ -744,7 +681,68 @@ Auto completion is only performed if the tick did not change."
          (lambda (candidate)
            (seq-contains-p (plist-get (lsp-bridge-get-candidate-item candidate) :tags) 1))
 
-         :exit-function #'lsp-bridge--exit-function
+         :exit-function
+         (lambda (candidate status)
+
+           (when (memq status '(finished exact))
+             ;; Because lsp-bridge will push new candidates when company/lsp-bridge-ui completing.
+             ;; We need extract newest candidates when insert, avoid insert old candidate content.
+             (let* ((candidates (hash-table-keys lsp-bridge-completion-candidates))
+                    (candidate-index (cl-find candidate candidates :test #'string=)))
+               (with-current-buffer (if (minibufferp)
+                                        (window-buffer (minibuffer-selected-window))
+                                      (current-buffer))
+                 (cond
+                  ;; Don't expand candidate if the user enters all characters manually.
+                  ;; ((and (member candidate candidates)
+                  ;;       (eq this-command 'self-insert-command)))
+                  ;; Just insert candidate if it has expired.
+                  ((null candidate-index))
+                  (t
+                   (let* ((label (string-trim candidate)) ; we need trim candidate
+                          (candidate-info (lsp-bridge-get-candidate-item candidate))
+                          (insert-text (plist-get candidate-info :insertText))
+                          (insert-text-format (plist-get candidate-info :insertTextFormat))
+                          (text-edit (plist-get candidate-info :textEdit))
+                          (new-text (plist-get text-edit :newText))
+                          (additionalTextEdits (plist-get candidate-info :additionalTextEdits))
+                          (kind (plist-get candidate-info :kind))
+                          (snippet-fn (and (or (eql insert-text-format 2) (string= kind "Snippet")) (lsp-bridge--snippet-expansion-fn)))
+                          (completion-start-pos (lsp-bridge--lsp-position-to-point lsp-bridge-completion-position))
+                          (delete-start-pos (if text-edit
+                                                (lsp-bridge--lsp-position-to-point (plist-get (plist-get text-edit :range) :start))
+                                              bounds-start))
+                          (range-end-pos (if text-edit
+                                             (lsp-bridge--lsp-position-to-point (plist-get (plist-get text-edit :range) :end))
+                                           completion-start-pos))
+                          (delete-end-pos (+ (point) (- range-end-pos completion-start-pos)))
+                          (insert-candidate (or new-text insert-text label)))
+
+                     ;; Move bound start position forward one character, if the following situation is satisfied:
+                     ;; 1. `textEdit' is not exist
+                     ;; 2. bound-start character is `lsp-bridge-completion-trigger-characters'
+                     ;; 3. `label' start with bound-start character
+                     ;; 4. `insertText' is not start with bound-start character
+                     (unless text-edit
+                       (let* ((bound-start-char (save-excursion
+                                                  (goto-char delete-start-pos)
+                                                  (char-to-string (char-after)))))
+                         (when (and (member bound-start-char lsp-bridge-completion-trigger-characters)
+                                    (string-prefix-p bound-start-char label)
+                                    (not (string-prefix-p bound-start-char insert-text)))
+                           (setq delete-start-pos (1+ delete-start-pos)))))
+
+                     ;; Delete region.
+                     (delete-region delete-start-pos delete-end-pos)
+
+                     ;; Insert candidate or expand snippet.
+                     (funcall (or snippet-fn #'insert) insert-candidate)
+
+                     ;; Do `additionalTextEdits' if return auto-imprt information.
+                     (when (and lsp-bridge-enable-auto-import
+                                (cl-plusp (length additionalTextEdits)))
+                       (lsp-bridge--apply-text-edits additionalTextEdits))
+                     )))))))
          )))))
 
 (defun lsp-bridge--snippet-expansion-fn ()
