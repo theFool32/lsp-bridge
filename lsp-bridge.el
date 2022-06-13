@@ -649,7 +649,7 @@ Auto completion is only performed if the tick did not change."
 (defun lsp-bridge--exit-function (candidate status)
   ;; Only expand candidate when status is `finished'.
   ;; Otherwise we execute command `backward-delete-char-untabify' will cause candidate expand.
-  (when (memq status '(finished))
+  (when (memq status '(finished exact))
     ;; Because lsp-bridge will push new candidates when company/lsp-bridge-ui completing.
     ;; We need extract newest candidates when insert, avoid insert old candidate content.
     (let* ((candidates (hash-table-keys lsp-bridge-completion-candidates))
@@ -659,8 +659,8 @@ Auto completion is only performed if the tick did not change."
                              (current-buffer))
         (cond
          ;; Don't expand candidate if the user enters all characters manually.
-         ((and (member candidate candidates)
-               (eq this-command 'self-insert-command)))
+         ;; ((and (member candidate candidates)
+         ;;       (eq this-command 'self-insert-command)))
          ;; Just insert candidate if it has expired.
          ((null candidate-index))
          (t
@@ -715,7 +715,7 @@ Auto completion is only performed if the tick did not change."
   (if interactive
       (let ((completion-at-point-functions (list 'lsp-bridge-capf)))
         (completion-at-point))
-    (when lsp-bridge-completion-candidates
+    (when (hash-table-p lsp-bridge-completion-candidates)
       (let* ((candidates (hash-table-keys lsp-bridge-completion-candidates))
              (bounds (bounds-of-thing-at-point 'symbol))
              (bounds-start (or (car bounds) (point)))
