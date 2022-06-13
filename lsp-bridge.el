@@ -167,6 +167,11 @@ Setting this to nil or 0 will turn off the indicator."
   :type 'boolean
   :group 'lsp-bridge)
 
+(defcustom lsp-bridge-use-eldoc t
+  "Whether to use eldoc for signature-help."
+  :type 'boolean
+  :group 'lsp-bridge)
+
 (defcustom lsp-bridge-signature-help-fetch-idle 0.5
   "The idle seconds to fetch signature help.."
   :type 'float
@@ -1013,7 +1018,8 @@ If optional MARKER, return a marker instead"
 (defun lsp-bridge-hide-diagnostic-tooltip ()
   (posframe-hide lsp-bridge-diagnostic-tooltip))
 
-(defun lsp-bridge-signature-help-update (help-infos help-index)
+(defvar-local lsp-bridge--signature nil)
+(defun lsp-bridge--signature-help-process (help-infos help-index)
   (let ((index 0)
         (help ""))
     (dolist (help-info help-infos)
@@ -1021,10 +1027,26 @@ If optional MARKER, return a marker instead"
                          (propertize help-info 'face (if (equal index help-index) 'font-lock-function-name-face 'default))
                          (if (equal index (1- (length help-infos))) "" ", ")))
       (setq index (1+ index)))
+    help))
+(defun lsp-bridge-signature-help-update (help-infos help-index)
+  (if lsp-bridge-use-eldoc
+      (setq lsp-bridge--signature (cons help-infos help-index))
 
     (let ((message-log-max nil))
-      (message help)
-      )))
+      (message (lsp-bridge--signature-help-process help-infos help-index)))))
+
+(defun lsp-bridge-signature-eldoc-fuction (callback)
+  (setq lsp-bridge--signature nil)
+  (lsp-bridge-signature-help-fetch)
+  (let ((sleep-time 0))
+    (while (and (null lsp-bridge--signature)
+                (< sleep-time 0.1))
+      (sleep-for 0.02)
+      (setq sleep-time (+ sleep-time 0.02))))
+
+  (when lsp-bridge--signature
+    (funcall callback (lsp-bridge--signature-help-process (car lsp-bridge--signature)
+                                                          (cdr lsp-bridge--signature)))))
 
 (defvar lsp-bridge--last-buffer nil)
 
@@ -1142,10 +1164,15 @@ If optional MARKER, return a marker instead"
       (lsp-bridge-start-process))
 
     (when (and lsp-bridge-enable-signature-help
-               (null lsp-bridge-signature-help-timer))
+               (null lsp-bridge-signature-help-timer)
+               (not lsp-bridge-use-eldoc))
       (setq lsp-bridge-signature-help-timer
             (run-with-idle-timer lsp-bridge-signature-help-fetch-idle t #'lsp-bridge-signature-help-fetch)))
 
+    (when (and lsp-bridge-enable-signature-help
+               lsp-bridge-use-eldoc)
+      (eldoc-mode t)
+      (add-hook 'eldoc-documentation-functions #'lsp-bridge-signature-eldoc-fuction nil t))
     )))
 
 (defun lsp-bridge--disable ()
@@ -1160,6 +1187,10 @@ If optional MARKER, return a marker instead"
 
   (dolist (hook lsp-bridge--internal-hooks)
     (remove-hook (car hook) (cdr hook) t))
+
+  (when (and lsp-bridge-enable-signature-help
+             lsp-bridge-use-eldoc)
+    (remove-hook 'eldoc-documentation-functions #'lsp-bridge-signature-eldoc-fuction t))
 
   (corfu-doc-mode -1))
 
