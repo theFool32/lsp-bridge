@@ -61,9 +61,10 @@ class FileAction:
         for handler_cls in Handler.__subclasses__():
             self.handlers[handler_cls.name] = handler_cls(self)
 
-        (self.enable_auto_import, self.enable_signature_help) = get_emacs_vars([
+        (self.enable_auto_import, self.enable_signature_help, self.completion_items_limit) = get_emacs_vars([
             "lsp-bridge-enable-auto-import",
-            "lsp-bridge-enable-signature-help"
+            "lsp-bridge-enable-signature-help",
+            "lsp-bridge-candidates-max-number"
         ])
 
         self.lsp_server.attach(self)

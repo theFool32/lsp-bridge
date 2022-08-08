@@ -29,6 +29,11 @@ from urllib.parse import urlparse
 import sexpdata
 from epc.client import EPCClient
 
+try:
+    import orjson as json_parser
+except:
+    import json as json_parser
+
 KIND_MAP = ["", "Text", "Method", "Function", "Constructor", "Field",
             "Variable", "Class", "Interface", "Module", "Property",
             "Unit", "Value", "Enum", "Keyword", "Snippet", "Color",
@@ -214,3 +219,7 @@ def get_emacs_version():
 
 def get_os_name():
     return platform.system().lower()
+
+
+def parse_json_content(content):
+    return json_parser.loads(content)

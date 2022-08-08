@@ -50,6 +50,7 @@ class Completion(Handler):
                 
                 self.file_action.completion_items["{},{}".format(label, kind)] = item
 
+        completion_candidates = completion_candidates[:min(len(completion_candidates), self.file_action.completion_items_limit)]
         # Calculate completion common string.
         completion_common_string = os.path.commonprefix(list(map(lambda candidate: candidate["label"], completion_candidates)))
         
