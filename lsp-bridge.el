@@ -923,7 +923,10 @@ If optional MARKER, return a marker instead"
 
 (defun lsp-bridge-signature-help-fetch ()
   (interactive)
-  (lsp-bridge-call-file-api "signature_help" (lsp-bridge--position)))
+  (if lsp-bridge-code-action-notify
+      (setq-local lsp-bridge-code-action-notify nil)
+    (unless (eq last-command 'mwheel-scroll)
+      (lsp-bridge-call-file-api "signature_help" (lsp-bridge--position)))))
 
 (defun lsp-bridge-rename-file (filepath edits)
   (find-file-noselect filepath)
@@ -1389,6 +1392,109 @@ If optional MARKER, return a marker instead"
     (setq-local lsp-bridge-completion-item-fetch-tick nil)
     (setq-local lsp-bridge-completion-item-popup-doc-tick nil)
     ))
+
+(defun lsp-bridge-code-action (&optional action-kind)
+  (interactive)
+  (lsp-bridge-call-file-api "code_action" (lsp-bridge-get-range-start) (lsp-bridge-get-range-end) action-kind))
+
+(defvar-local lsp-bridge-code-action-notify nil)
+
+(defun lsp-bridge-auto-format-code ()
+  (unless (eq last-command 'mwheel-scroll)
+    (lsp-bridge-code-format)))
+
+(defun lsp-bridge-code-format ()
+  (interactive)
+  (when (and
+         ;; Current buffer has LSP server.
+         (lsp-bridge-has-lsp-server-p)
+         ;; Completion menu not show.
+         (not (lsp-bridge-completion-ui-visible-p))
+         ;; Yasnippet not active.
+         (or (not (boundp 'yas--active-snippets))
+             (not yas--active-snippets))
+         ;; Tempel not active.
+         (or (not (boundp 'tempel--active))
+             (not tempel--active)))
+    (lsp-bridge-call-file-api "formatting" (symbol-value (lsp-bridge--get-indent-width major-mode)))))
+
+(defun lsp-bridge-code-format-fix (filepath edits)
+  (lsp-bridge-file-apply-edits filepath edits)
+  (message "[LSP-BRIDGE] Complete code formatting."))
+
+(defvar lsp-bridge-english-helper-dict nil)
+
+(defun lsp-bridge-code-action-fix (actions action-kind)
+  (let* ((menu-items
+          (or
+           (mapcar #'(lambda (action)
+                       (when (or (not action-kind)
+                                 (equal action-kind (plist-get action :kind)))
+                         (cons (plist-get action :title) action)))
+                   actions)
+           (apply #'error
+                  (if action-kind
+                      (format "No '%s' code action here" action-kind)
+                    "No code actions here"))))
+         (preferred-action (cl-find-if
+                            (lambda (menu-item)
+                              (plist-get (cdr menu-item) :isPreferred))
+                            menu-items))
+         (default-action (car (or preferred-action (car menu-items))))
+         (action (if (and action-kind (null (cadr menu-items)))
+                     (cdr (car menu-items))
+                   (cdr (assoc (completing-read
+                                (format "[LSP-BRIDGE] Pick an action (default: %s): " default-action)
+                                menu-items nil t nil nil default-action)
+                               menu-items)))))
+
+    (let* ((command (plist-get action :command))
+           (edit (plist-get action :edit)))
+      (cond (edit
+             (lsp-bridge-workspace-apply-edit edit))
+            (command
+             (let (arguments)
+               ;; Pick command and arguments.
+               (cond ((consp command)
+                      (setq arguments (plist-get command :arguments))
+                      (setq command (plist-get command :command)))
+                     ((stringp command)
+                      (setq arguments (plist-get action :arguments))))
+
+               (if (member command lsp-bridge-apply-edit-commands)
+                   ;; Apply workspace edit if command match `lsp-bridge-apply-edit-commands'.
+                   (dolist (argument arguments)
+                     (lsp-bridge-workspace-apply-edit argument))
+                 ;; Otherwise send `workspace/executeCommand' request to LSP server.
+                 (lsp-bridge-call-file-api "execute_command" command)))))
+      (message "[LSP-BRIDGE] Execute code action '%s'" (plist-get action :title)))))
+
+(defun lsp-bridge-workspace-apply-edit (edit)
+  (let (changes filepath edits)
+    (cond ((plist-get edit :changes)
+           (setq changes (plist-get edit :changes))
+           (setq filepath (string-remove-prefix ":file://" (format "%s" (nth 0 changes))))
+           (setq edits (nth 1 changes)))
+          ((plist-get edit :documentChanges)
+           (setq changes (plist-get edit :documentChanges))
+           (setq filepath (string-remove-prefix "file://" (plist-get (plist-get (nth 0 changes) :textDocument) :uri)))
+           (setq edits (plist-get (nth 0 changes) :edits))))
+    (lsp-bridge-file-apply-edits filepath edits)))
+
+(defun lsp-bridge-get-range-start ()
+  (lsp-bridge--point-position
+   (or (if (region-active-p)
+           (region-beginning)
+         (point))
+       (point))))
+
+(defun lsp-bridge-get-range-end ()
+  (lsp-bridge--point-position
+   (or (if (region-active-p)
+           (region-end)
+         (point))
+       (point))))
+
 
 ;; https://tecosaur.github.io/emacs-config/config.html#lsp-support-src
 (cl-defmacro lsp-org-babel-enable (lang)
