@@ -27,13 +27,18 @@ class Completion(Handler):
     def process_response(self, response: dict) -> None:
         # Get completion items.
         completion_candidates = []
+        sort_dict = {}
+        item_index = 0
 
         if response is not None:
             for item in response["items"] if "items" in response else response:
                 kind = KIND_MAP[item.get("kind", 0)]
                 label = item["label"]
+                key = "{}.{}".format(item_index, label)
+                item_index += 1
 
                 candidate = {
+                    "key": key,
                     "label": label,
                     "tags": item.get("tags", []),
                     "insertText": item.get('insertText', None),
@@ -43,12 +48,15 @@ class Completion(Handler):
                     "textEdit": item.get("textEdit", None)
                 }
 
+                sort_dict[key] = item.get('sortText', '')
+
                 if self.file_action.enable_auto_import:
                     candidate["additionalTextEdits"] = item.get("additionalTextEdits", [])
 
                 completion_candidates.append(candidate)
                 
                 self.file_action.completion_items["{},{}".format(label, kind)] = item
+            completion_candidates = sorted(completion_candidates, key=lambda candidate: sort_dict[candidate["key"]])
 
         completion_candidates = completion_candidates[:min(len(completion_candidates), self.file_action.completion_items_limit)]
         # Calculate completion common string.
