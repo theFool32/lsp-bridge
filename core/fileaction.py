@@ -61,10 +61,11 @@ class FileAction:
         for handler_cls in Handler.__subclasses__():
             self.handlers[handler_cls.name] = handler_cls(self)
 
-        (self.enable_auto_import, self.enable_signature_help, self.completion_items_limit) = get_emacs_vars([
+        (self.enable_auto_import, self.enable_signature_help, self.completion_items_limit, self.corfu_separator) = get_emacs_vars([
             "lsp-bridge-enable-auto-import",
             "lsp-bridge-enable-signature-help",
-            "lsp-bridge-candidates-max-number"
+            "lsp-bridge-candidates-max-number",
+            "corfu-separator"
         ])
 
         self.lsp_server.attach(self)
@@ -103,9 +104,11 @@ class FileAction:
         # 1. Character before cursor is match completion trigger characters.
         # 2. Completion UI is invisible.
         # 3. Last completion candidates is empty.
-        if ((before_char in self.lsp_server.completion_trigger_characters) or
-            (not completion_visible) or
-            len(self.last_completion_candidates) == 0):
+        # if (before_char in self.lsp_server.completion_trigger_characters) or \
+        #     (not completion_visible) or \
+        #     len(self.last_completion_candidates) == 0:
+        #     self.handlers["completion"].send_request(position, before_char)
+        if ord(before_char) != self.corfu_separator:
             self.handlers["completion"].send_request(position, before_char)
 
     def try_prepare_rename(self, position):
