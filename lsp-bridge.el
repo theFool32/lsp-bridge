@@ -1295,7 +1295,7 @@ If optional MARKER, return a marker instead"
 
 (defun lsp-bridge-popup-completion-item-doc (documentation)
   (unless (string-equal documentation "")
-    (unless (corfu-doc--popup-support-p)
+    (unless (corfu--popup-support-p)
       (error "Corfu-doc requires child frames to display documentation."))
     (when (corfu-doc--should-show-popup) ;;  TODO: check if current index is the same for the documentation
       (when-let ((candidate (corfu-doc--get-candidate))
@@ -1468,6 +1468,16 @@ If optional MARKER, return a marker instead"
                  ;; Otherwise send `workspace/executeCommand' request to LSP server.
                  (lsp-bridge-call-file-api "execute_command" command)))))
       (message "[LSP-BRIDGE] Execute code action '%s'" (plist-get action :title)))))
+
+(defun lsp-bridge-file-apply-edits (filepath edits &optional just-reverse)
+  (if (string-match "^/[A-Za-z]:" filepath)
+      (setq filepath (substring filepath 1)))
+  (find-file-noselect filepath)
+  (save-excursion
+    (find-file filepath)
+    (lsp-bridge--apply-text-edits edits))
+
+  (setq-local lsp-bridge-prohibit-completion t))
 
 (defun lsp-bridge-workspace-apply-edit (edit)
   (let (changes filepath edits)
