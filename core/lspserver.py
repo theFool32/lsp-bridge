@@ -30,14 +30,15 @@ import traceback
 from subprocess import PIPE
 from sys import stderr
 from threading import Thread
+from typing import TYPE_CHECKING, Dict
 from urllib.parse import urlparse
-from typing import Dict, TYPE_CHECKING
-from core.mergedeep import merge
 
 from core.handler import Handler
+from core.mergedeep import merge
 
 if TYPE_CHECKING:
     from core.fileaction import FileAction
+
 from core.utils import *
 
 DEFAULT_BUFFER_SIZE = 100000000  # we need make buffer size big enough, avoid pipe hang by big data response from LSP server
@@ -185,6 +186,7 @@ class LspServer:
         self.completion_trigger_characters = list()
         self.completion_resolve_provider = False
         self.rename_prepare_provider = False
+        self.workspace_symbol_provider = False
 
         # Start LSP server.
         self.p = subprocess.Popen(self.server_info["command"], bufsize=DEFAULT_BUFFER_SIZE, stdin=PIPE, stdout=PIPE, stderr=stderr)
@@ -251,7 +253,9 @@ class LspServer:
         merge_capabilites = merge(server_capabilities, {
             "workspace": {
                 "configuration": True,
-                "applyEdit": True,
+                "symbol": {
+                    "resolveSupport": True
+                }
             },
             "textDocument": {
                 "completion": {
@@ -264,6 +268,23 @@ class LspServer:
                             ]
                         }
                     }
+                },
+                "codeAction": {
+                    "dynamicRegistration": False,
+                    "codeActionLiteralSupport": {
+                        "codeActionKind": {
+                            "valueSet": [
+                                "quickfix",
+                                "refactor",
+                                "refactor.extract",
+                                "refactor.inline",
+                                "refactor.rewrite",
+                                "source",
+                                "source.organizeImports"
+                            ]
+                        }
+                    },
+                    "isPreferredSupport": True
                 }
             }
         })
@@ -303,7 +324,7 @@ class LspServer:
                 "uri": path_to_uri(filepath),
             }
         })
-        
+
     def send_did_rename_files_notification(self, old_filepath, new_filepath):
         self.sender.send_notification("workspace/renameFiles", {
             "files": [{
@@ -355,13 +376,13 @@ class LspServer:
         }
 
     def handle_workspace_configuration_request(self, name, request_id, params):
-        settings = self.server_info.get("settings", {})            
-        
+        settings = self.server_info.get("settings", {})
+
         # We send empty message back to server if nothing in 'settings' of server.json file.
         if len(settings) == 0:
             self.sender.send_response(request_id, [])
             return
-        
+
         # Otherwise, send back section value or default settings.
         items = []
         for p in params["items"]:
@@ -373,9 +394,9 @@ class LspServer:
         if "error" in message:
             logger.error("\n--- Recv message (error):")
             logger.error(json.dumps(message, indent=3))
-            
+
             message_emacs(message["error"]["message"])
-            
+
             return
 
         if "id" in message:
@@ -402,7 +423,7 @@ class LspServer:
             if is_in_path_dict(self.files, filepath):
                 file_action = get_from_path_dict(self.files, filepath)
                 file_action.diagnostics = message["params"]["diagnostics"]
-        
+
         logger.debug(json.dumps(message, indent=3))
 
         if "id" in message:
@@ -415,7 +436,7 @@ class LspServer:
                     self.completion_trigger_characters = message["result"]["capabilities"]["completionProvider"]["triggerCharacters"]
                 except KeyError:
                     pass
-                
+
                 try:
                     self.completion_resolve_provider = message["result"]["capabilities"]["completionProvider"]["resolveProvider"]
                 except KeyError:
@@ -425,7 +446,12 @@ class LspServer:
                     self.rename_prepare_provider = message["result"]["capabilities"]["renameProvider"]["prepareProvider"]
                 except Exception:
                     pass
-                
+
+                try:
+                    self.workspace_symbol_provider = message["result"]["capabilities"]["workspaceSymbolProvider"]
+                except Exception:
+                    pass
+
                 self.sender.send_notification("initialized", {}, init=True)
 
                 # STEP 3: Configure LSP server parameters.

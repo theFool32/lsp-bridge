@@ -3,14 +3,16 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.fileaction import FileAction
+
 from core.utils import *
+
 
 class Handler(abc.ABC):
     name: str  # Name called by Emacs
     method: str  # Method name defined by LSP
     cancel_on_change = False  # Whether to cancel request on file change or cursor change
     send_document_uri = True
-    
+
     def __init__(self, file_action: "FileAction"):
         self.latest_request_id = -1  # Latest request id
         self.last_change: tuple = file_action.last_change  # Last change information
@@ -29,7 +31,7 @@ class Handler(abc.ABC):
         self.last_change = self.file_action.last_change
 
         self.file_action.lsp_server.record_request_id(request_id, self)
-        
+
         params = self.process_request(*args, **kwargs)
         self.fill_document_uri(params)
 
@@ -38,13 +40,13 @@ class Handler(abc.ABC):
             params=params,
             request_id=request_id,
         )
-        
+
     def fill_document_uri(self, params: dict) -> None:
         if self.send_document_uri:
             params["textDocument"] = {
                 "uri": self.file_action.lsp_server.parse_document_uri(self.file_action.filepath, self.file_action.external_file_link)
             }
-        
+
     def handle_response(self, request_id, response):
         if request_id != self.latest_request_id:
             logger.debug("Discard outdated response: received=%d, latest=%d",
@@ -62,6 +64,7 @@ class Handler(abc.ABC):
             import traceback
             logger.error(traceback.format_exc())
 
+from core.handler.code_action import CodeAction
 # import subclasses so that we can use core.handler.Handler.__subclasses__()
 # import at the end of this file to avoid circular import
 from core.handler.completion import Completion
@@ -70,8 +73,8 @@ from core.handler.find_define import FindDefine
 from core.handler.find_implementation import FindImplementation
 from core.handler.find_references import FindReferences
 from core.handler.hover import Hover
-from core.handler.signature_help import SignatureHelp
+from core.handler.jdt_uri_resolver import JDTUriResolver
 from core.handler.prepare_rename import PrepareRename
 from core.handler.rename import Rename
-from core.handler.jdt_uri_resolver import JDTUriResolver
-from core.handler.code_action import CodeAction
+from core.handler.signature_help import SignatureHelp
+from core.handler.workspace_symbol import WorkspaceSymbol

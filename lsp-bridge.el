@@ -147,6 +147,11 @@ Setting this to nil or 0 will turn off the indicator."
   :type 'integer
   :group 'lsp-bridge)
 
+(defcustom lsp-bridge-enable-show-in-mode-line t
+  "Whether to show up in mode-line."
+  :type 'boolean
+  :group 'lsp-bridge)
+
 (defcustom lsp-bridge-enable-auto-import t
   "Whether to enable auto-import."
   :type 'boolean
@@ -1393,6 +1398,28 @@ If optional MARKER, return a marker instead"
     (setq-local lsp-bridge-completion-item-popup-doc-tick nil)
     ))
 
+(defun lsp-bridge-list-workspace-symbols ()
+  (interactive)
+  (lsp-bridge-call-file-api "workspace_symbol" ""))
+
+(defun lsp-bridge-show-workspace-symbols (info)
+  (if (zerop (length info))
+      (message "LSP server did not return any symbols.")
+    (let* ((symbols (mapcar (lambda (i) (plist-get i :name)) info))
+           match-symbol
+           match-info)
+      (setq match-symbol (completing-read "Workspace symbol: " symbols))
+      (setq match-info (seq-filter (lambda (i) (string-equal match-symbol (plist-get i :name))) info))
+      (when match-info
+        (let* ((file-info (plist-get (car match-info) :location))
+               (file-path (url-unhex-string (string-remove-prefix "file://" (format "%s" (plist-get file-info :uri)))))
+               (file-range (plist-get file-info :range))
+               (match-line (plist-get (plist-get file-range :start) :line))
+               (match-column (plist-get (plist-get file-range :start) :character)))
+          (find-file file-path)
+          (lsp-bridge-ref-move-to-point (+ match-line 1) match-column)
+          )))))
+
 (defun lsp-bridge-code-action (&optional action-kind)
   (interactive)
   (lsp-bridge-call-file-api "code_action" (lsp-bridge-get-range-start) (lsp-bridge-get-range-end) action-kind))
@@ -1668,8 +1695,9 @@ If optional MARKER, return a marker instead"
   (when lsp-bridge-server
     (propertize (format "lsp-bridge:%s" lsp-bridge-server-port) 'face mode-face)))
 
-(add-to-list 'mode-line-misc-info
-             `(lsp-bridge-mode (" [" lsp-bridge--mode-line-format "] ")))
+(when lsp-bridge-enable-show-in-mode-line
+    (add-to-list 'mode-line-misc-info
+                `(lsp-bridge-mode (" [" lsp-bridge--mode-line-format "] "))))
 
 
 (provide 'lsp-bridge)
