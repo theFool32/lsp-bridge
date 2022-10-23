@@ -47,7 +47,7 @@ test_interceptor = None
 
 # initialize logging, default to STDERR and INFO level
 logger = logging.getLogger("lsp-bridge")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.ERROR)
 logger.addHandler(logging.StreamHandler())
 
 

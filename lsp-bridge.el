@@ -376,7 +376,7 @@ Then LSP-Bridge will start by gdb, please send new issue with `*lsp-bridge*' buf
           lang-server-by-extension
         ;; Step 3: search lang server base on mode rule provide by `lsp-bridge-lang-server-extension-list'.
         (lsp-bridge--with-file-buffer filepath
-                                      (lsp-bridge-get-lang-server-by-mode))))))
+          (lsp-bridge-get-lang-server-by-mode))))))
 
 (defun lsp-bridge-get-lang-server-by-extension (filepath)
   "Get lang server for file extension."
@@ -413,7 +413,7 @@ Auto completion is only performed if the tick did not change."
 (defun lsp-bridge-call-async (method &rest args)
   "Call Python EPC function METHOD and ARGS asynchronously."
   (lsp-bridge-deferred-chain
-   (lsp-bridge-epc-call-deferred lsp-bridge-epc-process (read method) args)))
+    (lsp-bridge-epc-call-deferred lsp-bridge-epc-process (read method) args)))
 
 (defun lsp-bridge-call-sync (method &rest args)
   "Call Python EPC function METHOD and ARGS synchronously."
@@ -433,7 +433,7 @@ Auto completion is only performed if the tick did not change."
               (setq-local lsp-bridge-buffer-file-deleted nil)
               (message "[LSP-Bridge] %s is back, will send the LSP request after the file is changed next time." lsp-bridge-filepath))
           (lsp-bridge-deferred-chain
-           (lsp-bridge-epc-call-deferred lsp-bridge-epc-process (read method) (append (list lsp-bridge-filepath) args))))
+            (lsp-bridge-epc-call-deferred lsp-bridge-epc-process (read method) (append (list lsp-bridge-filepath) args))))
       ;; We need send `closeFile' request to lsp server if we found buffer's file is not exist,
       ;; it is usually caused by switching branch or other tools to delete file.
       ;;
@@ -581,59 +581,47 @@ Auto completion is only performed if the tick did not change."
                                            completion-trigger-characters
                                            completion-resolve-provider)
   (lsp-bridge--with-file-buffer filepath
-                                ;; Save completion items.
-                                (setq-local lsp-bridge-completion-common common)
-                                (setq-local lsp-bridge-completion-position position)
-                                (setq-local lsp-bridge-completion-server-name server-name)
-                                (setq-local lsp-bridge-completion-trigger-characters completion-trigger-characters)
-                                (setq-local lsp-bridge-completion-resolve-provider completion-resolve-provider)
+    ;; Save completion items.
+    (setq-local lsp-bridge-completion-common common)
+    (setq-local lsp-bridge-completion-position position)
+    (setq-local lsp-bridge-completion-server-name server-name)
+    (setq-local lsp-bridge-completion-trigger-characters completion-trigger-characters)
+    (setq-local lsp-bridge-completion-resolve-provider completion-resolve-provider)
 
-                                (setq-local lsp-bridge-completion-candidates (make-hash-table :test 'equal))
-                                (dolist (item items)
-                                  (lsp-bridge-add-candidate-item (plist-get item :label) item))
+    (setq-local lsp-bridge-completion-candidates (make-hash-table :test 'equal))
+    (dolist (item items)
+      (lsp-bridge-add-candidate-item (plist-get item :label) item))
 
-                                (if lsp-bridge-prohibit-completion
-                                    (setq lsp-bridge-prohibit-completion nil)
+    (if lsp-bridge-prohibit-completion
+        (setq lsp-bridge-prohibit-completion nil)
 
-                                  ;; Try popup completion frame.
-                                  (when (cl-every (lambda (pred)
-                                                    (if (functionp pred) (funcall pred) t))
-                                                  lsp-bridge-completion-popup-predicates)
-                                    (lsp-bridge-update-candidates)
-                                    ))))
+      ;; Try popup completion frame.
+      (when (cl-every (lambda (pred)
+                        (if (functionp pred) (funcall pred) t))
+                      lsp-bridge-completion-popup-predicates)
+        (lsp-bridge-update-candidates)
+        ))))
 
 (defun lsp-bridge-update-candidates ()
+  "Update corfu candidate manually."
   (ignore-errors
     (pcase (while-no-input ;; Interruptible capf query
              ;;  TODO: Is this expensive?
              (run-hook-wrapped 'completion-at-point-functions #'corfu--capf-wrapper))
       (`(,fun ,beg ,end ,table . ,plist)
        (let ((completion-in-region-mode-predicate
-              (lambda () (eq beg (car-safe (funcall fun)))))
-             (completion-extra-properties plist))
+              (lambda () (eq beg (car-safe (funcall fun))))))
          (setq completion-in-region--data
                (list (if (markerp beg) beg (copy-marker beg))
                      (copy-marker end t)
                      table
                      (plist-get plist :predicate)))
-         (pcase-let* ((`(,beg ,end ,table ,pred)
-                       completion-in-region--data)
-                      (pt (- (point) beg))
-                      (str (buffer-substring-no-properties beg end))
-                      (input (cons str pt)))
-           (when (equal corfu--input input)
-             (pcase (let ((non-essential t))
-                      (setq corfu--extra completion-extra-properties)
-                      (corfu--recompute str pt table pred))
-               ('nil (keyboard-quit))
-               ((and state (pred consp))
-                (dolist (s state) (set (car s) (cdr s)))
-                (setq corfu--input input
-                      corfu--index corfu--preselect))))
-           input))))
-    (corfu--exhibit)
-    )
-  )
+         (setq completion-extra-properties plist)
+         ;; (setq corfu--extra completion-extra-properties)
+         (let ((corfu--input nil))
+           (corfu--setup)
+           (corfu--exhibit 'auto))
+         )))))
 
 (defun lsp-bridge-not-continue ()
   "Hide completion if completion continue."
@@ -923,13 +911,13 @@ If optional MARKER, return a marker instead"
 
 (defun lsp-bridge-rename-highlight (filepath bound-start bound-end)
   (lsp-bridge--with-file-buffer filepath
-                                (require 'pulse)
-                                (let ((pulse-iterations 1)
-                                      (pulse-delay lsp-bridge-flash-line-delay))
-                                  (pulse-momentary-highlight-region
-                                   (lsp-bridge--lsp-position-to-point bound-start)
-                                   (lsp-bridge--lsp-position-to-point bound-end)
-                                   'lsp-bridge-font-lock-flash))))
+    (require 'pulse)
+    (let ((pulse-iterations 1)
+          (pulse-delay lsp-bridge-flash-line-delay))
+      (pulse-momentary-highlight-region
+       (lsp-bridge--lsp-position-to-point bound-start)
+       (lsp-bridge--lsp-position-to-point bound-end)
+       'lsp-bridge-font-lock-flash))))
 
 (defun lsp-bridge-lookup-documentation ()
   (interactive)
@@ -945,16 +933,16 @@ If optional MARKER, return a marker instead"
 (defun lsp-bridge-rename-file (filepath edits)
   (find-file-noselect filepath)
   (lsp-bridge--with-file-buffer filepath
-                                (save-excursion
-                                  (dolist (edit (reverse edits))
-                                    (let* ((bound-start (nth 0 edit))
-                                           (bound-end (nth 1 edit))
-                                           (new-text (nth 2 edit))
-                                           (replace-start-pos (lsp-bridge--lsp-position-to-point bound-start))
-                                           (replace-end-pos (lsp-bridge--lsp-position-to-point bound-end)))
-                                      (delete-region replace-start-pos replace-end-pos)
-                                      (goto-char replace-start-pos)
-                                      (insert new-text)))))
+    (save-excursion
+      (dolist (edit (reverse edits))
+        (let* ((bound-start (nth 0 edit))
+               (bound-end (nth 1 edit))
+               (new-text (nth 2 edit))
+               (replace-start-pos (lsp-bridge--lsp-position-to-point bound-start))
+               (replace-end-pos (lsp-bridge--lsp-position-to-point bound-end)))
+          (delete-region replace-start-pos replace-end-pos)
+          (goto-char replace-start-pos)
+          (insert new-text)))))
   (setq lsp-bridge-prohibit-completion t))
 
 (defun lsp-bridge--jump-to-def (filepath position)
@@ -1184,7 +1172,7 @@ If optional MARKER, return a marker instead"
 
 (defun lsp-bridge-turn-off (filepath)
   (lsp-bridge--with-file-buffer filepath
-                                (lsp-bridge--disable)))
+    (lsp-bridge--disable)))
 
 (defun lsp-bridge-diagnostics-fetch ()
   (when (and lsp-bridge-mode
@@ -1197,38 +1185,38 @@ If optional MARKER, return a marker instead"
 
 (defun lsp-bridge-diagnostics-render (filepath diagnostics)
   (lsp-bridge--with-file-buffer filepath
-                                (when lsp-bridge-diagnostic-overlays
-                                  (dolist (diagnostic-overlay lsp-bridge-diagnostic-overlays)
-                                    (delete-overlay diagnostic-overlay)))
+    (when lsp-bridge-diagnostic-overlays
+      (dolist (diagnostic-overlay lsp-bridge-diagnostic-overlays)
+        (delete-overlay diagnostic-overlay)))
 
-                                (setq lsp-bridge-diagnostic-overlays nil)
+    (setq lsp-bridge-diagnostic-overlays nil)
 
-                                (let ((diagnostic-index 0)
-                                      (diagnostic-number (length diagnostics)))
-                                  (dolist (diagnostic diagnostics)
-                                    (let* ((diagnostic-start (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :start)))
-                                           (diagnostic-end (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :end)))
-                                           (overlay (if (eq diagnostic-start diagnostic-end)
-                                                        ;; Adjust diagnostic end position if start and end is same position.
-                                                        (make-overlay diagnostic-start (1+ diagnostic-start))
-                                                      (make-overlay diagnostic-start diagnostic-end)))
-                                           (severity (plist-get diagnostic :severity))
-                                           (message (plist-get diagnostic :message))
-                                           (overlay-face (cl-case severity
-                                                           (1 'lsp-bridge-diagnostics-error-face)
-                                                           (2 'lsp-bridge-diagnostics-warning-face)
-                                                           (3 'lsp-bridge-diagnostics-info-face)
-                                                           (4 'lsp-bridge-diagnostics-hint-face))))
-                                      (overlay-put overlay 'face overlay-face)
-                                      (overlay-put overlay
-                                                   'help-echo
-                                                   (if (> diagnostic-number 1)
-                                                       (format "[%s:%s] %s" (1+ diagnostic-index) diagnostic-number message)
-                                                     message))
-                                      (push  overlay lsp-bridge-diagnostic-overlays))
+    (let ((diagnostic-index 0)
+          (diagnostic-number (length diagnostics)))
+      (dolist (diagnostic diagnostics)
+        (let* ((diagnostic-start (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :start)))
+               (diagnostic-end (lsp-bridge--lsp-position-to-point (plist-get (plist-get diagnostic :range) :end)))
+               (overlay (if (eq diagnostic-start diagnostic-end)
+                            ;; Adjust diagnostic end position if start and end is same position.
+                            (make-overlay diagnostic-start (1+ diagnostic-start))
+                          (make-overlay diagnostic-start diagnostic-end)))
+               (severity (plist-get diagnostic :severity))
+               (message (plist-get diagnostic :message))
+               (overlay-face (cl-case severity
+                               (1 'lsp-bridge-diagnostics-error-face)
+                               (2 'lsp-bridge-diagnostics-warning-face)
+                               (3 'lsp-bridge-diagnostics-info-face)
+                               (4 'lsp-bridge-diagnostics-hint-face))))
+          (overlay-put overlay 'face overlay-face)
+          (overlay-put overlay
+                       'help-echo
+                       (if (> diagnostic-number 1)
+                           (format "[%s:%s] %s" (1+ diagnostic-index) diagnostic-number message)
+                         message))
+          (push  overlay lsp-bridge-diagnostic-overlays))
 
-                                    (setq diagnostic-index (1+ diagnostic-index))))
-                                (setq lsp-bridge-diagnostic-overlays (reverse lsp-bridge-diagnostic-overlays))))
+        (setq diagnostic-index (1+ diagnostic-index))))
+    (setq lsp-bridge-diagnostic-overlays (reverse lsp-bridge-diagnostic-overlays))))
 
 (defvar lsp-bridge-diagnostic-frame nil)
 
@@ -1292,20 +1280,20 @@ If optional MARKER, return a marker instead"
          (additional-text-edits (plist-get info :additionalTextEdits))
          (documentation (plist-get info :documentation)))
     (lsp-bridge--with-file-buffer filepath
-                                  ;; Update `documentation' and `additionalTextEdits'
-                                  (when-let (item (lsp-bridge-get-candidate-item label))
-                                    (when additional-text-edits
-                                      (plist-put item :additionalTextEdits additional-text-edits))
+      ;; Update `documentation' and `additionalTextEdits'
+      (when-let (item (lsp-bridge-get-candidate-item label))
+        (when additional-text-edits
+          (plist-put item :additionalTextEdits additional-text-edits))
 
-                                    (unless (string-equal documentation "")
-                                      (plist-put item :documentation documentation))
+        (unless (string-equal documentation "")
+          (plist-put item :documentation documentation))
 
-                                    (puthash label item lsp-bridge-completion-candidates))
+        (puthash label item lsp-bridge-completion-candidates))
 
-                                  ;; Popup documentation window if same documentation window not exist.
-                                  (unless (string-equal label lsp-bridge-completion-item-popup-doc-tick)
-                                    (lsp-bridge-popup-completion-item-doc documentation))
-                                  )))
+      ;; Popup documentation window if same documentation window not exist.
+      (unless (string-equal label lsp-bridge-completion-item-popup-doc-tick)
+        (lsp-bridge-popup-completion-item-doc documentation))
+      )))
 
 (defun lsp-bridge-popup-completion-item-doc (documentation)
   (unless (string-equal documentation "")

@@ -108,7 +108,7 @@ class FileAction:
         #     (not completion_visible) or \
         #     len(self.last_completion_candidates) == 0:
         #     self.handlers["completion"].send_request(position, before_char)
-        if ord(before_char) != self.corfu_separator:
+        if before_char != "" and ord(before_char) != self.corfu_separator:
             self.handlers["completion"].send_request(position, before_char)
 
     def try_prepare_rename(self, position):
